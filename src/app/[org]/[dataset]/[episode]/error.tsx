@@ -1,6 +1,18 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
+
+const RELOAD_GUARD_KEY = "__chunk_reload_at";
+const RELOAD_COOLDOWN_MS = 10_000;
+
+function isChunkError(error: Error): boolean {
+  return (
+    error.name === "ChunkLoadError" ||
+    /Loading chunk [^\s]+ failed|Loading CSS chunk [^\s]+ failed/i.test(
+      error.message,
+    )
+  );
+}
 
 export default function Error({
   error,
@@ -9,6 +21,26 @@ export default function Error({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // A stale client chunk (after a rebuild/redeploy) can bubble to this
+  // boundary during navigation. Recover with a single guarded reload rather
+  // than showing a scary error for something a refresh fixes.
+  useEffect(() => {
+    if (!isChunkError(error)) return;
+    let last = 0;
+    try {
+      last = Number(sessionStorage.getItem(RELOAD_GUARD_KEY) ?? "0");
+    } catch {
+      // ignore
+    }
+    if (Date.now() - last < RELOAD_COOLDOWN_MS) return;
+    try {
+      sessionStorage.setItem(RELOAD_GUARD_KEY, String(Date.now()));
+    } catch {
+      // ignore
+    }
+    window.location.reload();
+  }, [error]);
+
   return (
     <div className="flex h-screen items-center justify-center bg-slate-950 text-red-400">
       <div className="max-w-xl p-8 rounded bg-slate-900 border border-red-500 shadow-lg">
