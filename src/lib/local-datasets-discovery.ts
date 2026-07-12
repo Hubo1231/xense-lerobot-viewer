@@ -10,6 +10,7 @@ import {
   EMPTY_TAGS,
   normalizeTags,
 } from "@/lib/dataset-tags";
+import { pickThumbnailVideoKey } from "@/lib/thumbnail-camera";
 
 export type { DatasetTags } from "@/lib/dataset-tags";
 
@@ -123,11 +124,11 @@ async function probeIntegrity(
 function pickThumbnailVideoPath(info: LocalDatasetInfoJson): string | null {
   if (!info.video_path || !info.features) return null;
 
-  const videoEntry = Object.entries(info.features).find(
-    ([, value]) => value?.dtype === "video",
-  );
-  if (!videoEntry) return null;
-  const [videoKey] = videoEntry;
+  const videoKeys = Object.entries(info.features)
+    .filter(([, value]) => value?.dtype === "video")
+    .map(([key]) => key);
+  const videoKey = pickThumbnailVideoKey(videoKeys);
+  if (!videoKey) return null;
 
   return formatStringWithVars(info.video_path, {
     video_key: videoKey,
