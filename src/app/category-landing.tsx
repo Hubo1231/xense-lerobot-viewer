@@ -1,0 +1,246 @@
+"use client";
+
+import React, { useMemo, useRef, useState } from "react";
+import type { DatasetGroup } from "@/utils/datasetGrouping";
+
+type OverallCounts = {
+  ok: number;
+  empty: number;
+  incomplete: number;
+};
+
+type CategoryLandingProps = {
+  root: string;
+  groups: DatasetGroup[];
+  datasetCount: number;
+  overall: OverallCounts;
+  errors: { path: string; message: string }[];
+  onSelect: (prefix: string) => void;
+};
+
+function formatTotalEpisodes(value: number): string {
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  return String(value);
+}
+
+export default function CategoryLanding({
+  root,
+  groups,
+  datasetCount,
+  overall,
+  errors,
+  onSelect,
+}: CategoryLandingProps) {
+  const [query, setQuery] = useState("");
+  const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+
+  const filteredGroups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return groups;
+    return groups.filter(
+      (g) =>
+        g.prefix.toLowerCase().includes(q) ||
+        g.datasets.some((d) => d.relativePath.toLowerCase().includes(q)),
+    );
+  }, [groups, query]);
+
+  return (
+    <main className="px-8 py-10 max-w-7xl mx-auto">
+      <header className="mb-8">
+        <div className="text-4xl font-bold tracking-tight">
+          <span className="bg-gradient-to-r from-cyan-300 via-sky-300 to-cyan-400 bg-clip-text text-transparent">
+            Xense
+          </span>
+          <span className="text-emerald-400">Robotics</span>
+        </div>
+        <h1 className="mt-3 text-xl font-medium tracking-tight text-slate-300">
+          LeRobot Local Dataset Visualizer
+        </h1>
+        <p className="mt-2 text-sm text-slate-400">
+          Browsing <span className="font-mono text-cyan-200/90">{root}</span>
+          <span className="mx-2 text-slate-600">·</span>
+          {groups.length} dataset{groups.length === 1 ? "" : "s"}
+          <span className="mx-2 text-slate-600">·</span>
+          {datasetCount} task{datasetCount === 1 ? "" : "s"} found
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            {overall.ok} healthy
+          </span>
+          {overall.incomplete > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-red-200">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+              {overall.incomplete} incomplete (missing data/videos)
+            </span>
+          )}
+          {overall.empty > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-amber-200">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+              {overall.empty} empty (0 episodes)
+            </span>
+          )}
+        </div>
+      </header>
+
+      {errors.length > 0 && (
+        <div className="mb-6 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+          <p className="font-semibold mb-1">
+            {errors.length} path{errors.length === 1 ? "" : "s"} could not be
+            scanned:
+          </p>
+          <ul className="space-y-0.5 font-mono text-amber-100/80">
+            {errors.slice(0, 5).map((err, i) => (
+              <li key={i} className="truncate">
+                {err.path}: {err.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {groups.length > 0 && (
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <svg
+              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"
+              />
+            </svg>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Filter datasets by name"
+              className="w-full rounded-md border border-white/10 bg-[var(--surface-1)]/60 px-10 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+            />
+          </div>
+        </div>
+      )}
+
+      {filteredGroups.length === 0 ? (
+        <div className="rounded-md border border-white/10 bg-[var(--surface-1)]/40 p-10 text-center text-slate-400">
+          {groups.length === 0 ? (
+            <>
+              No LeRobot tasks found under{" "}
+              <span className="font-mono text-slate-200">{root}</span>.
+              <br />
+              <span className="text-xs text-slate-500">
+                Make sure each task directory contains{" "}
+                <code>meta/info.json</code>.
+              </span>
+            </>
+          ) : (
+            <>No datasets match the current filter.</>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          {filteredGroups.map((group, idx) => {
+            const taskCount = group.datasets.length;
+            const hasIssues = group.counts.incomplete + group.counts.empty > 0;
+            return (
+              <button
+                key={group.prefix}
+                type="button"
+                onClick={() => onSelect(group.prefix)}
+                title={`${group.prefix} — ${taskCount} task${
+                  taskCount === 1 ? "" : "s"
+                }`}
+                className="group panel relative flex h-48 items-end overflow-hidden rounded-md border-2 border-white/10 text-left transition-colors hover:border-cyan-400/40"
+                onMouseEnter={() => {
+                  const vid = videoRefs.current[idx];
+                  if (vid) {
+                    void vid.play().catch(() => undefined);
+                  }
+                }}
+                onMouseLeave={() => {
+                  const vid = videoRefs.current[idx];
+                  if (vid) {
+                    vid.pause();
+                    vid.currentTime = 0;
+                  }
+                }}
+              >
+                {group.thumbnailVideoUrl ? (
+                  <video
+                    ref={(el) => {
+                      videoRefs.current[idx] = el;
+                    }}
+                    src={group.thumbnailVideoUrl}
+                    className="absolute left-0 top-0 z-0 h-full w-full object-cover object-center"
+                    loop
+                    muted
+                    playsInline
+                    preload="metadata"
+                    onTimeUpdate={(e) => {
+                      const vid = e.currentTarget;
+                      if (vid.currentTime >= 15) {
+                        vid.pause();
+                        vid.currentTime = 0;
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="absolute inset-0 z-0 bg-gradient-to-br from-slate-800 to-slate-900" />
+                )}
+                <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-t from-black/85 via-black/45 to-transparent" />
+
+                {/* Task-count corner badge — top-right */}
+                <div className="absolute right-2 top-2 z-20 inline-flex items-center gap-1 rounded-full bg-cyan-500/85 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-900 shadow">
+                  {taskCount} task{taskCount === 1 ? "" : "s"}
+                </div>
+
+                <div className="relative z-20 w-full px-3 py-3 text-slate-100">
+                  <div className="flex items-center gap-1.5">
+                    <svg
+                      className="h-4 w-4 shrink-0 text-cyan-300"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden
+                    >
+                      <path d="M2 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                    </svg>
+                    <div
+                      className="truncate text-lg font-semibold tracking-tight"
+                      title={group.prefix}
+                    >
+                      {group.prefix}
+                    </div>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-300">
+                    <span className="tabular">
+                      {formatTotalEpisodes(group.totalEpisodes)} episodes
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-emerald-300">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      {group.counts.ok} healthy
+                    </span>
+                    {hasIssues && (
+                      <span className="inline-flex items-center gap-1 text-amber-300">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                        {group.counts.incomplete + group.counts.empty} issue
+                        {group.counts.incomplete + group.counts.empty === 1
+                          ? ""
+                          : "s"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </main>
+  );
+}
