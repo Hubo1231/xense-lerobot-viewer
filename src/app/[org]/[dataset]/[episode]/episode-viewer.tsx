@@ -13,6 +13,7 @@ import {
 } from "@/context/annotations-context";
 import { AnnotationsPanel } from "@/components/annotations-panel";
 import { AnnotationsTimeline } from "@/components/annotations-timeline";
+import { SubtaskPanel } from "@/components/subtask-panel";
 import Sidebar from "@/components/side-nav";
 import StatsPanel from "@/components/stats-panel";
 import OverviewPanel from "@/components/overview-panel";
@@ -753,6 +754,15 @@ function EpisodeViewerInner({
                   </div>
                 </div>
               )}
+
+              {/* Subtasks — Pi-style segmentation → lerobot subtask_index */}
+              <SubtaskPanel
+                encodedPath={tagsEncodedPath}
+                episodeId={episodeId}
+                fps={datasetInfo.fps}
+                task={task}
+                frameTimestamps={data.frameTimestamps}
+              />
 
               {/* Graph */}
               <div className="mb-4">
