@@ -61,6 +61,8 @@ The browser URL for episodes is `/_local/<base64url-encoded-relative-path>/episo
 - `src/app/api/local-datasets/[encodedPath]/[...filePath]/route.ts` — streams individual files with HTTP range support for video
 - `src/app/api/local-datasets/[encodedPath]/tags/route.ts` — `GET`/`PUT` the `meta/xense_tags.json` sidecar
 - `src/app/api/local-datasets/[encodedPath]/annotations/route.ts` — `GET`/`PUT` the `meta/lerobot_annotations.json` sidecar (`GET ?episode=N` returns one episode's atoms; `PUT` merges one episode and atomically rewrites the file)
+- `src/app/api/local-datasets/[encodedPath]/subtasks/route.ts` — `GET`/`PUT` the Pi-style `meta/annotations.json` subtask sidecar (JSONL, one record/episode; `GET ?episode=N` returns one; `PUT` merge-writes one episode, preserving other episodes + `key_frames`)
+- `src/app/api/local-datasets/[encodedPath]/subtasks/export/route.ts` — `POST` spawns `scripts/export_subtasks.py` to compile the sidecar into lerobot-native `subtask_index` + `meta/subtasks.parquet`
 
 `buildVersionedUrl(repoId, version, path)` in `src/utils/versionUtils.ts` is now local-only and **throws** for non-local repoIds.
 
@@ -124,6 +126,14 @@ The **Annotations** tab edits lerobot's v3.1 language atoms (schema: [lerobot#34
 - **UI**: `annotations-panel.tsx` (quick-add + inspector; the upstream "Save dataset"/export and "backend offline" UI were removed), `annotations-timeline.tsx` (multi-track timeline), `video-overlay-canvas.tsx` (draw bbox/keypoint on a video → VQA atom). The overlay also mounts on the Episodes tab but is inert while `drawMode === "off"`.
 - **Not implemented (deferred Milestone B)**: writing atoms back into `data/chunk-*/file-*.parquet`. `hyparquet` is read-only; a local parquet write would need `hyparquet-writer` in a Node route. The JSON sidecar is the source of truth.
 
+### Subtasks (Pi-style segmentation → lerobot-native `subtask_index`)
+
+Separate from the atom-based Annotations tab: the **Episodes-tab Subtask panel** (`src/components/subtask-panel.tsx`) lets you label subtasks while browsing. Type an instruction at the current frame and it starts a **contiguous frame-range segment that persists until the next subtask** — the "persist until next" model lerobot's `subtask_index` uses. This is the layer that produces the **trainable** `sample["subtask"]` (the language-atom `subtask` style does not).
+
+- **Model** (`src/types/subtask.types.ts`): `SubtaskSegment { segment_id, skill, instruction, paraphrases[], start_frame_index, success_frame_index, end_frame_index }` inside `EpisodeSubtaskAnnotation { episode_index, high_level_instruction, instruction_segments[], key_frames? }`. Pure, unit-tested helpers (`activeSegmentAt`, `insertSubtaskAt`, `updateSegment`, `removeSegment`, `normalizeSegments`, `timeToFrame`/`frameToTime`) work in **frame-index** space and keep segments sorted, contiguous, and renumbered.
+- **Authoring source of truth** — `meta/annotations.json` (**JSONL**, one Pi-style record per episode; the vendor format some datasets already ship). Read/written via `src/utils/subtasksClient.ts` → the `subtasks` route, which does per-episode merge (never clobbers other episodes / `key_frames`). Panel state uses a sessionStorage live buffer + explicit **Save**, mirroring the Annotations context. Not wired to `AnnotationsProvider` (the Pi model carries skill/paraphrases/success-frame the atom schema can't express).
+- **Compile to native** — `scripts/export_subtasks.py` (pandas/pyarrow; `scripts/requirements.txt`). Writes per-frame `subtask_index` into every `data/**/*.parquet` (the earliest subtask is pinned to frame 0 so annotated episodes are fully covered; an episode with no annotation falls back to its own `task` string as one whole-episode subtask), `meta/subtasks.parquet` (mirrors `tasks.parquet`: string as `__index_level_0__` index + `subtask_index` column; indices stable across runs), and adds the `subtask_index` feature + `total_subtasks` to `meta/info.json`. Uses pyarrow (not the JS writer) so the `list<float>` `action`/`observation.state` columns round-trip exactly; rewrites are verified (row count + untouched-column equality) with a `.bak` kept. Triggered by the panel's **Export** button (dataset-wide) or run standalone from the CLI.
+
 ## Key files
 
 | File                                                              | Purpose                                                                                                                                                  |
@@ -143,6 +153,10 @@ The **Annotations** tab edits lerobot's v3.1 language atoms (schema: [lerobot#34
 | `src/components/annotations-panel.tsx`                            | Annotations editor: quick-add bar, atom list, inspector, "Save episode"                                                                                  |
 | `src/components/annotations-timeline.tsx`                         | Multi-track atom timeline (one lane per kind, click-to-seek, drag spans)                                                                                 |
 | `src/components/video-overlay-canvas.tsx`                         | Draw bbox/keypoint on a video → grounded-VQA atom; inert when `drawMode === "off"`                                                                       |
+| `src/types/subtask.types.ts`                                      | Pi-style subtask segment schema + pure helpers (`activeSegmentAt`, `insertSubtaskAt`, `normalizeSegments`, frame↔time)                                   |
+| `src/components/subtask-panel.tsx`                                | Episodes-tab subtask labeler: active-subtask banner, quick-add, segment strip, list/inspector, Save + Export                                             |
+| `src/utils/subtasksClient.ts`                                     | Client for the `…/[encodedPath]/subtasks` + `/subtasks/export` routes                                                                                    |
+| `scripts/export_subtasks.py`                                      | pyarrow: compile `meta/annotations.json` → per-frame `subtask_index` + `meta/subtasks.parquet` + `info.json` (backup + verify)                           |
 | `src/components/urdf-viewer.tsx`                                  | 3D viewer; loads URDFs from the HF bucket; `autoMatchJoints` does column→joint mapping (supports `.pos`/`.position`/`.q` suffixes)                       |
 | `src/utils/versionUtils.ts`                                       | `getDatasetInfo`, `getDatasetVersionAndInfo`, `buildVersionedUrl` (local-only)                                                                           |
 | `src/utils/datasetRoute.ts`                                       | `local:` repoId wrapper, base64url encode, route ↔ repoId conversion                                                                                     |

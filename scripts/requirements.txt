@@ -1,0 +1,4 @@
+# Dependencies for scripts/export_subtasks.py
+# (compiles Pi-style meta/annotations.json into lerobot-native subtask_index).
+pandas>=2.0
+pyarrow>=14.0
