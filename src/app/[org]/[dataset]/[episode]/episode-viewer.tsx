@@ -47,6 +47,9 @@ const ActionInsightsPanel = lazy(
   () => import("@/components/action-insights-panel"),
 );
 const FilteringPanel = lazy(() => import("@/components/filtering-panel"));
+const ParquetTablePanel = lazy(
+  () => import("@/components/parquet-table-panel"),
+);
 // Recharts is ~150KB gz and not above-the-fold (videos render first on the
 // Episodes tab). Lazy-load it so the initial chunk can ship faster and
 // videos start downloading in parallel with the chart bundle.
@@ -75,7 +78,8 @@ type ActiveTab =
   | "frames"
   | "insights"
   | "filtering"
-  | "urdf";
+  | "urdf"
+  | "parquet";
 
 // Subscribes to `currentTime` so its parent doesn't have to. Keeping this
 // in a leaf component means the throttled time ticks (~12.5/s during
@@ -257,20 +261,20 @@ function EpisodeViewerInner({
   const [chartsReady, setChartsReady] = useState(false);
   const repoId = org && dataset ? repoIdFromRouteParams(org, dataset) : null;
   const datasetDisplayName = getDisplayNameForRepoId(datasetInfo.repoId);
-  // Local datasets carry an editable tag sidecar (see public/api/local-datasets/<encoded>/tags).
-  // Compute the encoded URL segment from the in-memory repoId so the viewer
-  // can read/write tags without needing it threaded down from the page.
+  // Compute the encoded URL segment from the in-memory repoId so the viewer can
+  // reach the per-dataset routes (tags, parquet, …) without it being threaded
+  // down from the page.
   const localDatasetPath = getLocalDatasetPath(datasetInfo.repoId);
-  const tagsEncodedPath = localDatasetPath
+  const encodedDatasetPath = localDatasetPath
     ? encodeLocalDatasetPath(localDatasetPath)
     : null;
   const [tags, setTags] = useState<DatasetTags>(EMPTY_TAGS);
   const [tagsEditorOpen, setTagsEditorOpen] = useState(false);
 
   useEffect(() => {
-    if (!tagsEncodedPath) return;
+    if (!encodedDatasetPath) return;
     let cancelled = false;
-    fetch(`/api/local-datasets/${tagsEncodedPath}/tags`)
+    fetch(`/api/local-datasets/${encodedDatasetPath}/tags`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (cancelled || !data) return;
@@ -280,7 +284,7 @@ function EpisodeViewerInner({
     return () => {
       cancelled = true;
     };
-  }, [tagsEncodedPath]);
+  }, [encodedDatasetPath]);
 
   const loadStartRef = useRef(performance.now());
 
@@ -303,6 +307,7 @@ function EpisodeViewerInner({
           "insights",
           "filtering",
           "urdf",
+          "parquet",
         ].includes(stored)
       ) {
         return stored as ActiveTab;
@@ -622,6 +627,11 @@ function EpisodeViewerInner({
         {renderTab("filtering", "Filtering")}
         {renderTab("frames", "Frames")}
         {renderTab("insights", "Action Insights")}
+        {renderTab(
+          "parquet",
+          "Parquet",
+          "Browse the raw contents of any parquet file in this dataset",
+        )}
         <div className="ml-auto flex items-center gap-1 pr-2">
           <Link
             href="/"
@@ -680,7 +690,7 @@ function EpisodeViewerInner({
                   <p className="text-[10px] uppercase tracking-wide text-slate-500 mt-0.5 tabular">
                     Episode · {episodeId}
                   </p>
-                  {tagsEncodedPath &&
+                  {encodedDatasetPath &&
                     (tags.task || tags.scene || tags.objects.length > 0) && (
                       <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[10px]">
                         {tags.task && (
@@ -711,7 +721,7 @@ function EpisodeViewerInner({
                       </div>
                     )}
                 </div>
-                {tagsEncodedPath && (
+                {encodedDatasetPath && (
                   <button
                     type="button"
                     onClick={() => setTagsEditorOpen(true)}
@@ -757,7 +767,7 @@ function EpisodeViewerInner({
 
               {/* Subtasks — Pi-style segmentation → lerobot subtask_index */}
               <SubtaskPanel
-                encodedPath={tagsEncodedPath}
+                encodedPath={encodedDatasetPath}
                 episodeId={episodeId}
                 fps={datasetInfo.fps}
                 task={task}
@@ -871,13 +881,22 @@ function EpisodeViewerInner({
               />
             </Suspense>
           )}
+
+          {activeTab === "parquet" && (
+            <Suspense fallback={<Loading />}>
+              <ParquetTablePanel
+                encodedPath={encodedDatasetPath}
+                episodeId={episodeId}
+              />
+            </Suspense>
+          )}
         </div>
       </div>
 
-      {tagsEditorOpen && tagsEncodedPath && (
+      {tagsEditorOpen && encodedDatasetPath && (
         <DatasetTagsEditor
           datasetRelativePath={datasetDisplayName}
-          encodedPath={tagsEncodedPath}
+          encodedPath={encodedDatasetPath}
           initialTags={tags}
           onClose={() => setTagsEditorOpen(false)}
           onSaved={(updated) => {
