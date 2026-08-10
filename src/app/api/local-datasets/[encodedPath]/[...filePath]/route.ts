@@ -1,10 +1,7 @@
 import { NextRequest } from "next/server";
 import fs from "node:fs/promises";
 import path from "node:path";
-import {
-  decodeLocalDatasetPath,
-  resolveServerLocalDatasetPath,
-} from "@/utils/datasetRoute";
+import { statDatasetFile } from "@/lib/local-dataset-paths";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,42 +51,6 @@ function normalizeRange(
   return { start, end };
 }
 
-async function openLocalFile(
-  encodedPath: string,
-  relativeFilePath: string[],
-): Promise<{
-  absolutePath: string;
-  size: number;
-} | null> {
-  const datasetRoot = path.resolve(
-    resolveServerLocalDatasetPath(decodeLocalDatasetPath(encodedPath)),
-  );
-  const requestedPath = path.resolve(datasetRoot, ...relativeFilePath);
-  const relative = path.relative(datasetRoot, requestedPath);
-
-  if (
-    relative === "" ||
-    relative.startsWith("..") ||
-    path.isAbsolute(relative)
-  ) {
-    return null;
-  }
-
-  let stat;
-  try {
-    stat = await fs.stat(requestedPath);
-  } catch {
-    return null;
-  }
-
-  if (!stat.isFile()) return null;
-
-  return {
-    absolutePath: requestedPath,
-    size: Number(stat.size),
-  };
-}
-
 function buildCommonHeaders(filePath: string, size: number): Headers {
   const headers = new Headers();
   headers.set("content-type", inferContentType(filePath));
@@ -107,7 +68,7 @@ export async function GET(
   ctx: { params: Promise<{ encodedPath: string; filePath: string[] }> },
 ) {
   const { encodedPath, filePath } = await ctx.params;
-  const file = await openLocalFile(encodedPath, filePath);
+  const file = await statDatasetFile(encodedPath, filePath);
   if (!file) return new Response("Not found", { status: 404 });
 
   const rangeHeader = req.headers.get("range");
@@ -148,7 +109,7 @@ export async function HEAD(
   ctx: { params: Promise<{ encodedPath: string; filePath: string[] }> },
 ) {
   const { encodedPath, filePath } = await ctx.params;
-  const file = await openLocalFile(encodedPath, filePath);
+  const file = await statDatasetFile(encodedPath, filePath);
   if (!file) return new Response(null, { status: 404 });
 
   return new Response(null, {
