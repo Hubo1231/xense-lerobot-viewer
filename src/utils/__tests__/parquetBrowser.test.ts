@@ -164,6 +164,18 @@ describe("describeCell", () => {
     const cell = describeCell({ __kind: "list", length: 10, items: [1, 2] });
     expect(cell.kind).toBe("list");
     expect(cell.full).toContain("8 more items not loaded");
+    expect(cell.expandable).toBe(true);
+  });
+
+  it("does not offer to expand a list the preview already shows whole", () => {
+    expect(describeCell([1, 2]).expandable).toBe(false);
+    expect(describeCell([]).expandable).toBe(false);
+    // Five items: the fifth is hidden behind the ellipsis, so expanding helps.
+    expect(describeCell([1, 2, 3, 4, 5]).expandable).toBe(true);
+  });
+
+  it("offers to expand a short list whose own items are abbreviated", () => {
+    expect(describeCell(["x".repeat(200)]).expandable).toBe(true);
   });
 
   it("summarises byte cells", () => {

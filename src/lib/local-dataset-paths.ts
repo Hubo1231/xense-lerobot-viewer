@@ -29,10 +29,23 @@ export function resolveDatasetRoot(encodedPath: string): string | null {
 }
 
 /**
+ * True when `target` sits strictly below `root`. Both must already be absolute
+ * and normalized; this compares paths only, it never touches the filesystem.
+ */
+export function isInsideRoot(root: string, target: string): boolean {
+  const relative = path.relative(root, target);
+  return (
+    relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative)
+  );
+}
+
+/**
  * Join `segments` onto `datasetRoot`, rejecting anything that escapes it
  * (`..`, absolute segments) or resolves to the root itself.
  *
  * Pure — no filesystem access — so the traversal rules stay unit-testable.
+ * This catches only *lexical* escapes; symlinks are checked in
+ * `statDatasetFile`, which is the layer that can afford to hit the disk.
  */
 export function resolveInsideDataset(
   datasetRoot: string,
@@ -40,17 +53,8 @@ export function resolveInsideDataset(
 ): string | null {
   const root = path.resolve(datasetRoot);
   const requested = path.resolve(root, ...segments);
-  const relative = path.relative(root, requested);
 
-  if (
-    relative === "" ||
-    relative.startsWith("..") ||
-    path.isAbsolute(relative)
-  ) {
-    return null;
-  }
-
-  return requested;
+  return isInsideRoot(root, requested) ? requested : null;
 }
 
 export interface LocalFileStat {
@@ -59,7 +63,17 @@ export interface LocalFileStat {
   mtimeMs: number;
 }
 
-/** Stat a file inside a dataset. Null for traversal attempts, misses and non-files. */
+/**
+ * Stat a file inside a dataset. Null for traversal attempts, misses and
+ * non-files.
+ *
+ * `resolveInsideDataset` only rules out escapes spelled out in the path, so a
+ * symlink planted in the dataset (a downloaded archive can carry one) would
+ * still read whatever it points at. Re-checking the resolved target closes
+ * that. The dataset directory is resolved too, so a dataset reached through a
+ * symlinked root still works — only links that leave the dataset are refused,
+ * which does mean a deliberately out-of-tree `videos/` symlink is refused too.
+ */
 export async function statDatasetFile(
   encodedPath: string,
   segments: string[],
@@ -77,6 +91,16 @@ export async function statDatasetFile(
     return null;
   }
   if (!stat.isFile()) return null;
+
+  try {
+    const [realRoot, realTarget] = await Promise.all([
+      fs.realpath(root),
+      fs.realpath(absolutePath),
+    ]);
+    if (!isInsideRoot(realRoot, realTarget)) return null;
+  } catch {
+    return null;
+  }
 
   return {
     absolutePath,

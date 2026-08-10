@@ -23,7 +23,10 @@ import { resolveInsideDataset } from "@/lib/local-dataset-paths";
 import {
   buildV3DataPath,
   buildV3EpisodesMetadataPath,
+  formatEpisodeChunk,
+  formatEpisodeIndex,
 } from "@/utils/stringFormatting";
+import { formatStringWithVars } from "@/utils/parquetUtils";
 import { bigIntToNumber } from "@/utils/typeGuards";
 import { toJsonSafe } from "@/utils/parquetBrowser";
 import type {
@@ -253,18 +256,98 @@ const LOCATOR_COLUMNS = [
   "dataset_to_index",
 ];
 
+/** Fallback when `meta/info.json` omits `data_path` (matches lerobot's default). */
+const V2_DEFAULT_DATA_PATH =
+  "data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}.parquet";
+const V2_DEFAULT_CHUNKS_SIZE = 1000;
+
+export interface DatasetInfoLite {
+  codebase_version?: string;
+  data_path?: string;
+  chunks_size?: number;
+}
+
+/**
+ * Dataset-relative path of a v2.x episode's parquet, from the `data_path`
+ * format string in `meta/info.json`. Pure, so the padding rules stay testable.
+ */
+export function buildV2EpisodeDataPath(
+  info: DatasetInfoLite,
+  episodeIndex: number,
+): string {
+  const chunksSize =
+    typeof info.chunks_size === "number" && info.chunks_size > 0
+      ? info.chunks_size
+      : V2_DEFAULT_CHUNKS_SIZE;
+
+  return formatStringWithVars(info.data_path || V2_DEFAULT_DATA_PATH, {
+    // formatStringWithVars drops the `:03d` specifier, so pad here.
+    episode_chunk: formatEpisodeChunk(Math.floor(episodeIndex / chunksSize)),
+    episode_index: formatEpisodeIndex(episodeIndex),
+  });
+}
+
+async function readDatasetInfo(
+  datasetRoot: string,
+): Promise<DatasetInfoLite | null> {
+  const infoPath = resolveInsideDataset(datasetRoot, "meta/info.json");
+  if (!infoPath) return null;
+  try {
+    return JSON.parse(await fs.readFile(infoPath, "utf8")) as DatasetInfoLite;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * v2.x locator. There is no episode-metadata tree to consult: each episode owns
+ * a whole parquet whose path is a format string in `meta/info.json`, so the file
+ * is computed rather than searched, and the row range is simply the whole file.
+ */
+async function locateEpisodeRowsV2(
+  datasetRoot: string,
+  episodeIndex: number,
+  info: DatasetInfoLite,
+): Promise<EpisodeLocator | null> {
+  const relPath = buildV2EpisodeDataPath(info, episodeIndex);
+  const absolutePath = resolveInsideDataset(datasetRoot, relPath);
+  if (!absolutePath) return null;
+
+  const stat = await statFileOrNull(absolutePath);
+  if (!stat) return null;
+
+  const handle = await openParquet(
+    absolutePath,
+    relPath,
+    stat.size,
+    stat.mtimeMs,
+  );
+
+  return {
+    episodeIndex,
+    relPath,
+    fromIndex: 0,
+    toIndex: handle.info.numRows,
+  };
+}
+
 /**
  * Find which data parquet holds an episode and which row range it occupies.
  *
- * Walks `meta/episodes/chunk-{N}/file-{M}.parquet` in order — episode metadata
- * can span several chunks once the episode count exceeds `chunks_size`, so this
- * must not stop at chunk-000. Returns null for v2.x datasets (no such tree) or
- * when the episode isn't listed.
+ * v3.0 walks `meta/episodes/chunk-{N}/file-{M}.parquet` in order — episode
+ * metadata can span several chunks once the episode count exceeds
+ * `chunks_size`, so this must not stop at chunk-000. v2.x has no such tree and
+ * is computed from `info.data_path` instead. Null when the episode isn't found.
  */
 export async function locateEpisodeRows(
   datasetRoot: string,
   episodeIndex: number,
 ): Promise<EpisodeLocator | null> {
+  const info = await readDatasetInfo(datasetRoot);
+  if (info?.codebase_version?.startsWith("v2")) {
+    return locateEpisodeRowsV2(datasetRoot, episodeIndex, info);
+  }
+
   for (let chunk = 0; chunk < MAX_EPISODE_CHUNKS; chunk += 1) {
     let sawFile = false;
 

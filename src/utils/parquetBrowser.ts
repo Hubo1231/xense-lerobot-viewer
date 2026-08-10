@@ -254,17 +254,18 @@ export function describeCell(value: unknown): CellDescription {
 }
 
 function describeList(items: unknown[], totalLength: number): CellDescription {
-  const head = items
-    .slice(0, PREVIEW_LIST_ITEMS)
-    .map((item) => describeCell(item).preview);
+  const head = items.slice(0, PREVIEW_LIST_ITEMS).map(describeCell);
   const ellipsis = totalLength > head.length ? ", …" : "";
   const suffix = totalLength === 1 ? "" : ` ×${totalLength}`;
 
   return {
     kind: "list",
-    preview: `[${head.join(", ")}${ellipsis}]${suffix}`,
+    preview: `[${head.map((cell) => cell.preview).join(", ")}${ellipsis}]${suffix}`,
     full: items.map((item) => describeCell(item).full).join(", "),
-    expandable: totalLength > 0,
+    // Expanding is only worth a click when the preview hides something: items
+    // past the inline head, or a head item that is itself abbreviated.
+    expandable:
+      totalLength > head.length || head.some((cell) => cell.expandable),
   };
 }
 
