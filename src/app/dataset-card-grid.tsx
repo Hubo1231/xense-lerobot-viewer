@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type {
@@ -9,6 +9,7 @@ import type {
 } from "@/lib/local-datasets-discovery";
 import type { DatasetTags } from "@/lib/dataset-tags";
 import DatasetTagsEditor from "@/components/dataset-tags-editor";
+import HoverPlayVideo from "@/components/hover-play-video";
 import { getDatasetTaskName } from "@/utils/datasetGrouping";
 
 type DatasetCardGridProps = {
@@ -82,7 +83,6 @@ export default function DatasetCardGrid({
   const [editingDatasetKey, setEditingDatasetKey] = useState<string | null>(
     null,
   );
-  const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
 
   // Apply overrides (from in-page edits) on top of server-loaded tags.
   const datasetsWithLiveTags = useMemo(
@@ -364,7 +364,7 @@ export default function DatasetCardGrid({
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {filtered.map((ds, idx) => {
+          {filtered.map((ds) => {
             const health = describeIntegrity(ds.integrity);
             const taskName = getDatasetTaskName(ds.relativePath);
             const borderTone =
@@ -388,41 +388,15 @@ export default function DatasetCardGrid({
                     ? ds.relativePath
                     : `${ds.relativePath}\n${health.label}: ${health.reason}`
                 }
+                data-hover-card
                 className={`group panel relative flex h-48 items-end overflow-hidden rounded-md border-2 transition-colors ${borderTone}`}
-                onMouseEnter={() => {
-                  const vid = videoRefs.current[idx];
-                  if (vid) {
-                    void vid.play().catch(() => undefined);
-                  }
-                }}
-                onMouseLeave={() => {
-                  const vid = videoRefs.current[idx];
-                  if (vid) {
-                    vid.pause();
-                    vid.currentTime = 0;
-                  }
-                }}
               >
                 {ds.thumbnailVideoUrl ? (
-                  <video
-                    ref={(el) => {
-                      videoRefs.current[idx] = el;
-                    }}
+                  <HoverPlayVideo
                     src={ds.thumbnailVideoUrl}
                     className={`absolute left-0 top-0 z-0 h-full w-full object-cover object-center ${
                       health.tone === "ok" ? "" : "opacity-40 grayscale"
                     }`}
-                    loop
-                    muted
-                    playsInline
-                    preload="metadata"
-                    onTimeUpdate={(e) => {
-                      const vid = e.currentTarget;
-                      if (vid.currentTime >= 15) {
-                        vid.pause();
-                        vid.currentTime = 0;
-                      }
-                    }}
                   />
                 ) : (
                   <div className="absolute inset-0 z-0 bg-gradient-to-br from-slate-800 to-slate-900" />
