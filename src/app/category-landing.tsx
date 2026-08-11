@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import type { DatasetGroup } from "@/utils/datasetGrouping";
+import HoverPlayVideo from "@/components/hover-play-video";
 
 type OverallCounts = {
   ok: number;
@@ -32,7 +33,6 @@ export default function CategoryLanding({
   onSelect,
 }: CategoryLandingProps) {
   const [query, setQuery] = useState("");
-  const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
 
   const filteredGroups = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -145,7 +145,7 @@ export default function CategoryLanding({
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {filteredGroups.map((group, idx) => {
+          {filteredGroups.map((group) => {
             const taskCount = group.datasets.length;
             const hasIssues = group.counts.incomplete + group.counts.empty > 0;
             return (
@@ -156,39 +156,13 @@ export default function CategoryLanding({
                 title={`${group.prefix} — ${taskCount} task${
                   taskCount === 1 ? "" : "s"
                 }`}
+                data-hover-card
                 className="group panel relative flex h-48 items-end overflow-hidden rounded-md border-2 border-white/10 text-left transition-colors hover:border-cyan-400/40"
-                onMouseEnter={() => {
-                  const vid = videoRefs.current[idx];
-                  if (vid) {
-                    void vid.play().catch(() => undefined);
-                  }
-                }}
-                onMouseLeave={() => {
-                  const vid = videoRefs.current[idx];
-                  if (vid) {
-                    vid.pause();
-                    vid.currentTime = 0;
-                  }
-                }}
               >
                 {group.thumbnailVideoUrl ? (
-                  <video
-                    ref={(el) => {
-                      videoRefs.current[idx] = el;
-                    }}
+                  <HoverPlayVideo
                     src={group.thumbnailVideoUrl}
                     className="absolute left-0 top-0 z-0 h-full w-full object-cover object-center"
-                    loop
-                    muted
-                    playsInline
-                    preload="metadata"
-                    onTimeUpdate={(e) => {
-                      const vid = e.currentTarget;
-                      if (vid.currentTime >= 15) {
-                        vid.pause();
-                        vid.currentTime = 0;
-                      }
-                    }}
                   />
                 ) : (
                   <div className="absolute inset-0 z-0 bg-gradient-to-br from-slate-800 to-slate-900" />
