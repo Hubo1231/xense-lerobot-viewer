@@ -28,7 +28,7 @@ curl -fsSL https://bun.sh/install | bash
 ## Setup
 
 ```bash
-git clone git@github.com:Vertax42/xense-lerobot-viewer.git
+git clone git@github.com:XenseRobotics-AI/xense-lerobot-viewer.git
 cd xense-lerobot-viewer
 bun install
 bun dev
