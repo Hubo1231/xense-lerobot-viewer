@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import type {
   DatasetDisplayInfo,
+  EpisodeLengthHistogramBin,
   EpisodeLengthStats,
   CameraInfo,
 } from "@/app/[org]/[dataset]/[episode]/fetch-data";
@@ -25,11 +27,19 @@ function formatTotalTime(totalFrames: number, fps: number): string {
 function EpisodeLengthHistogram({
   data,
 }: {
-  data: { binLabel: string; count: number }[];
+  data: EpisodeLengthHistogramBin[];
 }) {
+  const [activeBinIndex, setActiveBinIndex] = useState(() =>
+    Math.max(
+      0,
+      data.findIndex((bin) => bin.count > 0),
+    ),
+  );
   if (data.length === 0) return null;
   const maxCount = Math.max(...data.map((d) => d.count));
   if (maxCount === 0) return null;
+
+  const activeBin = data[activeBinIndex] ?? data[0];
 
   const totalWidth = 560;
   const gap = Math.max(1, Math.min(3, Math.floor(60 / data.length)));
@@ -44,61 +54,109 @@ function EpisodeLengthHistogram({
   const labelStep = Math.max(1, Math.ceil(data.length / 10));
 
   return (
-    <div className="overflow-x-auto">
-      <svg
-        width={svgWidth}
-        height={topPad + chartHeight + labelHeight}
-        className="block"
-        aria-label="Episode length distribution histogram"
-      >
-        {data.map((bin, i) => {
-          const barH = Math.max(1, (bin.count / maxCount) * chartHeight);
-          const x = i * (barWidth + gap);
-          const y = topPad + chartHeight - barH;
-          return (
-            <g key={i}>
-              <title>{`${bin.binLabel}: ${bin.count} episode${bin.count !== 1 ? "s" : ""}`}</title>
-              <rect
-                x={x}
-                y={y}
-                width={barWidth}
-                height={barH}
-                className="fill-orange-500/80 hover:fill-orange-400 transition-colors"
-                rx={Math.min(2, barWidth / 4)}
-              />
-              {bin.count > 0 && barWidth >= 8 && (
-                <text
-                  x={x + barWidth / 2}
-                  y={y - 3}
-                  textAnchor="middle"
-                  className="fill-slate-400"
-                  fontSize={Math.min(10, barWidth - 1)}
-                >
-                  {bin.count}
-                </text>
-              )}
-            </g>
-          );
-        })}
-        {data.map((bin, idx) => {
-          const isFirst = idx === 0;
-          const isLast = idx === data.length - 1;
-          if (!isFirst && !isLast && idx % labelStep !== 0) return null;
-          const label = bin.binLabel.split("–")[0];
-          return (
-            <text
-              key={idx}
-              x={idx * (barWidth + gap) + barWidth / 2}
-              y={topPad + chartHeight + 14}
-              textAnchor="middle"
-              className="fill-slate-400"
-              fontSize={9}
-            >
-              {label}s
-            </text>
-          );
-        })}
-      </svg>
+    <div className="space-y-3">
+      <div className="overflow-x-auto">
+        <svg
+          width={svgWidth}
+          height={topPad + chartHeight + labelHeight}
+          className="block"
+          aria-label="Episode length distribution histogram"
+        >
+          {data.map((bin, i) => {
+            const barH = Math.max(1, (bin.count / maxCount) * chartHeight);
+            const x = i * (barWidth + gap);
+            const y = topPad + chartHeight - barH;
+            const isActive = i === activeBinIndex;
+            const titleIndices = bin.episodeIndices.slice(0, 20).join(", ");
+            const remainingIndices = Math.max(
+              0,
+              bin.episodeIndices.length - 20,
+            );
+            return (
+              <g
+                key={i}
+                role="button"
+                tabIndex={0}
+                aria-pressed={isActive}
+                aria-label={`${bin.binLabel}: ${bin.count} episode${bin.count !== 1 ? "s" : ""}`}
+                className="cursor-pointer outline-none"
+                onMouseEnter={() => setActiveBinIndex(i)}
+                onFocus={() => setActiveBinIndex(i)}
+                onClick={() => setActiveBinIndex(i)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setActiveBinIndex(i);
+                  }
+                }}
+              >
+                <title>{`${bin.binLabel}: ${bin.count} episode${bin.count !== 1 ? "s" : ""}${bin.count > 0 ? `\nEpisode indices: ${titleIndices}${remainingIndices > 0 ? `, … (+${remainingIndices} more)` : ""}` : ""}`}</title>
+                <rect
+                  x={x}
+                  y={y}
+                  width={barWidth}
+                  height={barH}
+                  className={`${isActive ? "fill-orange-400" : "fill-orange-500/80 hover:fill-orange-400"} transition-colors`}
+                  stroke={isActive ? "#fed7aa" : "transparent"}
+                  strokeWidth={1}
+                  rx={Math.min(2, barWidth / 4)}
+                />
+                {bin.count > 0 && barWidth >= 8 && (
+                  <text
+                    x={x + barWidth / 2}
+                    y={y - 3}
+                    textAnchor="middle"
+                    className="fill-slate-400 pointer-events-none"
+                    fontSize={Math.min(10, barWidth - 1)}
+                  >
+                    {bin.count}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+          {data.map((bin, idx) => {
+            const isFirst = idx === 0;
+            const isLast = idx === data.length - 1;
+            if (!isFirst && !isLast && idx % labelStep !== 0) return null;
+            const label = bin.binLabel.split("–")[0];
+            return (
+              <text
+                key={idx}
+                x={idx * (barWidth + gap) + barWidth / 2}
+                y={topPad + chartHeight + 14}
+                textAnchor="middle"
+                className="fill-slate-400"
+                fontSize={9}
+              >
+                {label}s
+              </text>
+            );
+          })}
+        </svg>
+      </div>
+
+      <div className="rounded-md border border-white/10 bg-[var(--surface-0)]/50 px-3 py-2.5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="text-xs font-medium text-slate-200">
+            {activeBin.binLabel}
+          </p>
+          <p className="text-xs tabular-nums text-slate-400">
+            {activeBin.count} episode{activeBin.count !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <p className="mt-2 text-[11px] uppercase tracking-wide text-slate-500">
+          Episode indices
+        </p>
+        <p className="mt-1 max-h-24 overflow-y-auto break-words font-mono text-xs leading-5 text-slate-300 select-all">
+          {activeBin.episodeIndices.length > 0
+            ? activeBin.episodeIndices.map((index) => `ep ${index}`).join(", ")
+            : "None"}
+        </p>
+      </div>
+      <p className="text-[11px] text-slate-500">
+        Hover, click, or focus a bar to inspect the episodes in that range.
+      </p>
     </div>
   );
 }

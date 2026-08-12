@@ -76,6 +76,12 @@ export type EpisodeLengthInfo = {
   frames: number;
 };
 
+export type EpisodeLengthHistogramBin = {
+  binLabel: string;
+  count: number;
+  episodeIndices: number[];
+};
+
 export type EpisodeLengthStats = {
   shortestEpisodes: EpisodeLengthInfo[];
   longestEpisodes: EpisodeLengthInfo[];
@@ -83,7 +89,7 @@ export type EpisodeLengthStats = {
   meanEpisodeLength: number;
   medianEpisodeLength: number;
   stdEpisodeLength: number;
-  episodeLengthHistogram: { binLabel: string; count: number }[];
+  episodeLengthHistogram: EpisodeLengthHistogramBin[];
 };
 
 export type EpisodeFrameInfo = {
@@ -1624,7 +1630,13 @@ export async function loadAllEpisodeLengthsV3(
         medianEpisodeLength: median,
         stdEpisodeLength: std,
         episodeLengthHistogram: [
-          { binLabel: `${histMin.toFixed(1)}s`, count: lengths.length },
+          {
+            binLabel: `${histMin.toFixed(1)}s`,
+            count: lengths.length,
+            episodeIndices: withSeconds
+              .map((episode) => episode.episodeIndex)
+              .sort((a, b) => a - b),
+          },
         ],
       };
     }
@@ -1650,19 +1662,25 @@ export async function loadAllEpisodeLengthsV3(
       1,
       Math.round((niceMax - niceMin) / niceBinWidth),
     );
-    const bins = Array.from({ length: actualBinCount }, () => 0);
+    const bins = Array.from({ length: actualBinCount }, () => [] as number[]);
 
-    for (const len of lengths) {
+    for (const episode of withSeconds) {
+      const len = episode.lengthSeconds;
       let binIdx = Math.floor((len - niceMin) / niceBinWidth);
       if (binIdx < 0) binIdx = 0;
       if (binIdx >= actualBinCount) binIdx = actualBinCount - 1;
-      bins[binIdx]++;
+      bins[binIdx].push(episode.episodeIndex);
     }
 
-    const histogram = bins.map((count, i) => {
+    const histogram = bins.map((episodeIndices, i) => {
       const lo = niceMin + i * niceBinWidth;
       const hi = lo + niceBinWidth;
-      return { binLabel: `${lo.toFixed(1)}–${hi.toFixed(1)}s`, count };
+      episodeIndices.sort((a, b) => a - b);
+      return {
+        binLabel: `${lo.toFixed(1)}–${hi.toFixed(1)}s`,
+        count: episodeIndices.length,
+        episodeIndices,
+      };
     });
 
     return {
