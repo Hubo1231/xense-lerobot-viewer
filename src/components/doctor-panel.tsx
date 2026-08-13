@@ -105,6 +105,28 @@ function downloadReport(report: DoctorReport): void {
   URL.revokeObjectURL(url);
 }
 
+async function copyTextToClipboard(value: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // Fall through to the legacy path for HTTP/local-network deployments.
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  return copied;
+}
+
 function Spinner() {
   return (
     <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
@@ -372,6 +394,7 @@ export default function DoctorPanel({
   );
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [copiedAffectedEpisodes, setCopiedAffectedEpisodes] = useState(false);
   const controllerRef = useRef<AbortController | null>(null);
 
   const run = useCallback(
@@ -519,6 +542,16 @@ export default function DoctorPanel({
     () => (report ? extractAffectedDoctorEpisodeIds(report) : []),
     [report],
   );
+  const copyAffectedEpisodeIds = useCallback(async () => {
+    if (affectedEpisodeIds.length === 0) return;
+    const copied = await copyTextToClipboard(affectedEpisodeIds.join(", "));
+    if (copied) {
+      setCopiedAffectedEpisodes(true);
+      window.setTimeout(() => setCopiedAffectedEpisodes(false), 1500);
+    } else {
+      setCopiedAffectedEpisodes(false);
+    }
+  }, [affectedEpisodeIds]);
   const visibleChecks = useMemo(() => {
     if (!report) return [];
     const normalizedQuery = query.trim().toLowerCase();
@@ -854,14 +887,52 @@ export default function DoctorPanel({
               </button>
             )}
             {affectedEpisodeIds.length > 0 && (
-              <button
-                type="button"
-                onClick={() => addMany(affectedEpisodeIds)}
-                title={`Flag episodes ${affectedEpisodeIds.join(", ")}`}
-                className="rounded-md border border-orange-400/25 bg-orange-400/10 px-3 py-2 text-xs font-medium text-orange-300 transition-colors hover:border-orange-400/50 hover:bg-orange-400/15"
-              >
-                Flag all affected ({affectedEpisodeIds.length})
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => addMany(affectedEpisodeIds)}
+                  title={`Flag episodes ${affectedEpisodeIds.join(", ")}`}
+                  className="rounded-md border border-orange-400/25 bg-orange-400/10 px-3 py-2 text-xs font-medium text-orange-300 transition-colors hover:border-orange-400/50 hover:bg-orange-400/15"
+                >
+                  Flag all affected ({affectedEpisodeIds.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void copyAffectedEpisodeIds()}
+                  title="Copy affected episode IDs"
+                  aria-label="Copy affected episode IDs"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-cyan-400/25 bg-cyan-400/10 px-3 py-2 text-xs font-medium text-cyan-300 transition-colors hover:border-cyan-400/50 hover:bg-cyan-400/15"
+                >
+                  {copiedAffectedEpisodes ? (
+                    <>
+                      <svg
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className="h-3.5 w-3.5"
+                        aria-hidden
+                      >
+                        <path d="m7.5 13.5-3-3L3 12l4.5 4.5L17 7l-1.5-1.5z" />
+                      </svg>
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <svg
+                        viewBox="0 0 20 20"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        className="h-3.5 w-3.5"
+                        aria-hidden
+                      >
+                        <rect x="6.5" y="6.5" width="9" height="9" rx="1.5" />
+                        <path d="M13.5 6.5V5A1.5 1.5 0 0 0 12 3.5H5A1.5 1.5 0 0 0 3.5 5v7A1.5 1.5 0 0 0 5 13.5h1.5" />
+                      </svg>
+                      Copy IDs
+                    </>
+                  )}
+                </button>
+              </>
             )}
           </div>
 
