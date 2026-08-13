@@ -8,6 +8,7 @@ import type {
   EpisodeLengthStats,
   CameraInfo,
 } from "@/app/[org]/[dataset]/[episode]/fetch-data";
+import { copyTextToClipboard } from "@/utils/clipboard";
 import { getDisplayNameForRepoId } from "@/utils/datasetRoute";
 import {
   assignEpisodesToBins,
@@ -44,6 +45,7 @@ export function EpisodeLengthHistogram({
       data.findIndex((bin) => bin.count > 0),
     ),
   );
+  const [copiedBinIndex, setCopiedBinIndex] = useState<number | null>(null);
   // Per-bin membership is derived here rather than shipped from the server —
   // `episodes` already carries every index, so sending them per bin too would
   // put the same integers on the wire twice.
@@ -58,6 +60,16 @@ export function EpisodeLengthHistogram({
 
   const activeBin = data[activeBinIndex] ?? data[0];
   const activeEpisodeIndices = binEpisodeIndices[activeBinIndex] ?? [];
+  const copyActiveEpisodeIds = async () => {
+    if (activeEpisodeIndices.length === 0) return;
+    const copied = await copyTextToClipboard(activeEpisodeIndices.join(", "));
+    if (copied) {
+      setCopiedBinIndex(activeBinIndex);
+      window.setTimeout(() => setCopiedBinIndex(null), 1500);
+    } else {
+      setCopiedBinIndex(null);
+    }
+  };
 
   const totalWidth = 560;
   const gap = Math.max(1, Math.min(3, Math.floor(60 / data.length)));
@@ -157,9 +169,49 @@ export function EpisodeLengthHistogram({
           <p className="text-xs font-medium text-slate-200">
             {activeBin.binLabel}
           </p>
-          <p className="text-xs tabular-nums text-slate-400">
-            {activeBin.count} episode{activeBin.count !== 1 ? "s" : ""}
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-xs tabular-nums text-slate-400">
+              {activeBin.count} episode{activeBin.count !== 1 ? "s" : ""}
+            </p>
+            {activeEpisodeIndices.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void copyActiveEpisodeIds()}
+                title={`Copy episode IDs: ${activeEpisodeIndices.join(", ")}`}
+                aria-label={`Copy ${activeBin.binLabel} episode IDs`}
+                className="inline-flex items-center gap-1 rounded border border-cyan-400/25 bg-cyan-400/10 px-2 py-1 text-[11px] font-medium text-cyan-300 transition-colors hover:border-cyan-400/50 hover:bg-cyan-400/15"
+              >
+                {copiedBinIndex === activeBinIndex ? (
+                  <>
+                    <svg
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      className="h-3 w-3"
+                      aria-hidden
+                    >
+                      <path d="m7.5 13.5-3-3L3 12l4.5 4.5L17 7l-1.5-1.5z" />
+                    </svg>
+                    Copied IDs
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      className="h-3 w-3"
+                      aria-hidden
+                    >
+                      <rect x="6.5" y="6.5" width="9" height="9" rx="1.5" />
+                      <path d="M13.5 6.5V5A1.5 1.5 0 0 0 12 3.5H5A1.5 1.5 0 0 0 3.5 5v7A1.5 1.5 0 0 0 5 13.5h1.5" />
+                    </svg>
+                    Copy IDs
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
         <p className="mt-2 text-[11px] uppercase tracking-wide text-slate-500">
           Episode indices

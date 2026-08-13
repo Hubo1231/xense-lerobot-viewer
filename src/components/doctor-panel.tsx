@@ -17,6 +17,7 @@ import {
   type DoctorRunResponse,
   type DoctorSeverity,
 } from "@/types/doctor.types";
+import { copyTextToClipboard } from "@/utils/clipboard";
 import { runDatasetDoctor } from "@/utils/doctorClient";
 import { assignEpisodesToBins } from "@/utils/episodeLengthHistogram";
 
@@ -106,28 +107,6 @@ function downloadReport(report: DoctorReport): void {
   anchor.download = `lerobot-doctor-${report.dataset_name ?? "report"}.json`;
   anchor.click();
   URL.revokeObjectURL(url);
-}
-
-async function copyTextToClipboard(value: string): Promise<boolean> {
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(value);
-      return true;
-    } catch {
-      // Fall through to the legacy path for HTTP/local-network deployments.
-    }
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = value;
-  textarea.setAttribute("readonly", "");
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-  document.body.appendChild(textarea);
-  textarea.select();
-  const copied = document.execCommand("copy");
-  textarea.remove();
-  return copied;
 }
 
 function Spinner() {
@@ -1086,11 +1065,36 @@ export default function DoctorPanel({
                   aria-label="Copy all Doctor checks and the episode length distribution"
                   className="inline-flex items-center gap-1.5 rounded-md border border-violet-400/25 bg-violet-400/10 px-3 py-2 text-xs font-medium text-violet-300 transition-colors hover:border-violet-400/50 hover:bg-violet-400/15 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {copiedDoctorDetails
-                    ? "Copied details"
-                    : episodeLengthStatsLoading
-                      ? "Preparing details…"
-                      : "Copy details"}
+                  {copiedDoctorDetails ? (
+                    <>
+                      <svg
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className="h-3.5 w-3.5"
+                        aria-hidden
+                      >
+                        <path d="m7.5 13.5-3-3L3 12l4.5 4.5L17 7l-1.5-1.5z" />
+                      </svg>
+                      Copied details
+                    </>
+                  ) : (
+                    <>
+                      <svg
+                        viewBox="0 0 20 20"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        className="h-3.5 w-3.5"
+                        aria-hidden
+                      >
+                        <rect x="6.5" y="6.5" width="9" height="9" rx="1.5" />
+                        <path d="M13.5 6.5V5A1.5 1.5 0 0 0 12 3.5H5A1.5 1.5 0 0 0 3.5 5v7A1.5 1.5 0 0 0 5 13.5h1.5" />
+                      </svg>
+                      {episodeLengthStatsLoading
+                        ? "Preparing details…"
+                        : "Copy details"}
+                    </>
+                  )}
                 </button>
               </>
             )}
