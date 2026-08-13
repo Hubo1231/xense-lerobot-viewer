@@ -405,14 +405,9 @@ export function checkActions(dataset: LoadedDoctorDataset) {
       const percent = (maxConsecutiveEqualRows(matrix) / matrix.length) * 100;
       if (percent >= 5) frozen.push([episode.episodeIndex, percent]);
     }
-    for (const [episode, percent] of frozen.slice(0, 5)) {
+    for (const [episode, percent] of frozen) {
       result.warn(
         `${columnName}: ${percent.toFixed(0)}% of episode ${episode} is consecutive identical actions (frozen)`,
-      );
-    }
-    if (frozen.length > 5) {
-      result.warn(
-        `${columnName}: ...and ${frozen.length - 5} more episodes with frozen actions`,
       );
     }
 
@@ -425,14 +420,9 @@ export function checkActions(dataset: LoadedDoctorDataset) {
         const count = countStandardizedJumps(matrix, standardDeviations);
         if (count > 0) jumps.push([episode.episodeIndex, count]);
       }
-      for (const [episode, count] of jumps.slice(0, 5)) {
+      for (const [episode, count] of jumps) {
         result.warn(
           `${columnName}: Episode ${episode} has ${count} sudden large action jumps (>8 std mean across dims)`,
-        );
-      }
-      if (jumps.length > 5) {
-        result.warn(
-          `${columnName}: ...and ${jumps.length - 5} more episodes with large action jumps`,
         );
       }
     }

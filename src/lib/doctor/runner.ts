@@ -3,6 +3,7 @@ import {
   DOCTOR_CHECK_IDS,
   type DoctorCheckId,
   type DoctorCheckResult,
+  type DoctorProgress,
   type DoctorReport,
   type DoctorRunResponse,
   type DoctorSeverity,
@@ -27,6 +28,7 @@ export interface RunDoctorOptions {
   maxEpisodes: number | null;
   checks?: DoctorCheckId[] | null;
   signal?: AbortSignal;
+  onProgress?: (progress: DoctorProgress) => void;
 }
 
 const CHECKS: Record<
@@ -48,6 +50,41 @@ const CHECKS: Record<
   per_episode: checkPerEpisode,
 };
 
+const CHECK_NAMES: Record<DoctorCheckId, string> = {
+  metadata: "Metadata & Format Compliance",
+  temporal: "Temporal Consistency",
+  actions: "Action Quality",
+  videos: "Video Integrity",
+  statistics: "Data Distribution",
+  episodes: "Episode Health",
+  consistency: "Feature Consistency",
+  training: "Training Readiness",
+  anomalies: "Anomaly Detection",
+  portability: "Portability",
+  per_episode: "Per-Episode Summary",
+};
+
+function reportProgress(
+  options: RunDoctorOptions,
+  progress: Omit<DoctorProgress, "percent" | "overall_percent">,
+): void {
+  const percent =
+    progress.total === 0
+      ? 0
+      : Math.round((progress.completed / progress.total) * 100);
+  const overallPercent =
+    progress.phase === "loading"
+      ? Math.round(percent * 0.4)
+      : progress.phase === "complete"
+        ? 100
+        : Math.round(40 + percent * 0.6);
+  options.onProgress?.({
+    ...progress,
+    percent,
+    overall_percent: overallPercent,
+  });
+}
+
 function worstSeverity(checks: DoctorCheckResult[]): DoctorSeverity {
   if (checks.some((check) => check.severity === "FAIL")) return "FAIL";
   if (checks.some((check) => check.severity === "WARN")) return "WARN";
@@ -67,17 +104,52 @@ export async function runTypeScriptDoctor(
   options: RunDoctorOptions,
 ): Promise<DoctorRunResponse> {
   const startedAt = performance.now();
+  reportProgress(options, {
+    phase: "loading",
+    completed: 0,
+    total: 1,
+    message: "Loading episode metadata and parquet data…",
+  });
   const dataset = await loadDoctorDataset(datasetRoot, {
     maxEpisodes: options.maxEpisodes,
     signal: options.signal,
+    onProgress: ({ fraction, message }) =>
+      reportProgress(options, {
+        phase: "loading",
+        completed: Math.round(fraction * 100),
+        total: 100,
+        message,
+      }),
   });
   const selected = options.checks?.length
     ? options.checks
     : [...DOCTOR_CHECK_IDS];
+  reportProgress(options, {
+    phase: "checks",
+    completed: 0,
+    total: selected.length,
+    message: `Loaded ${dataset.episodesData.length.toLocaleString()} episodes. Starting diagnostic checks…`,
+  });
   const checks: DoctorCheckResult[] = [];
-  for (const checkId of selected) {
+  for (const [index, checkId] of selected.entries()) {
     throwIfDoctorAborted(options.signal);
+    reportProgress(options, {
+      phase: "checks",
+      completed: index,
+      total: selected.length,
+      check_id: checkId,
+      check_name: CHECK_NAMES[checkId],
+      message: `Running ${CHECK_NAMES[checkId]} (${index + 1}/${selected.length})…`,
+    });
     checks.push(await CHECKS[checkId](dataset));
+    reportProgress(options, {
+      phase: "checks",
+      completed: index + 1,
+      total: selected.length,
+      check_id: checkId,
+      check_name: CHECK_NAMES[checkId],
+      message: `Completed ${CHECK_NAMES[checkId]} (${index + 1}/${selected.length})`,
+    });
     // Let request cancellation and the route timeout run between CPU-bound checks.
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
@@ -95,7 +167,7 @@ export async function runTypeScriptDoctor(
     checks,
     summary: countSeverity(checks),
   };
-  return {
+  const response: DoctorRunResponse = {
     ok: true,
     report,
     execution: {
@@ -109,4 +181,11 @@ export async function runTypeScriptDoctor(
       cache_hit: false,
     },
   };
+  reportProgress(options, {
+    phase: "complete",
+    completed: 1,
+    total: 1,
+    message: "Diagnosis complete",
+  });
+  return response;
 }

@@ -7,6 +7,8 @@ import {
   checkTemporal,
 } from "../checks/core";
 import { checkPerEpisode } from "../checks/anomalies";
+import { getColumnDiffSummary, getColumnMatrices } from "../analysis";
+import { countStandardizedJumps, summaryStandardDeviations } from "../math";
 
 function datasetFixture(): LoadedDoctorDataset {
   const rows = Array.from({ length: 10 }, (_, frame) => ({
@@ -174,5 +176,48 @@ describe("native Doctor checks", () => {
       result = checkActions(dataset);
     }).not.toThrow();
     expect(result?.severity).not.toBe("FAIL");
+  });
+
+  it("lists every affected episode in action and per-episode checks", () => {
+    const dataset = datasetFixture();
+    dataset.episodesData = Array.from({ length: 30 }, (_, episodeIndex) => ({
+      episodeIndex,
+      length: 40,
+      columns: {
+        action: Array.from({ length: 40 }, (_, frame) => [
+          frame === 20 && episodeIndex % 3 !== 0
+            ? episodeIndex % 2 === 0
+              ? 100
+              : -100
+            : frame / 100,
+        ]),
+      },
+    }));
+    const diffSummary = getColumnDiffSummary(dataset, "action");
+    const deviations = summaryStandardDeviations(diffSummary!, 1);
+    const expected = getColumnMatrices(dataset, "action").filter(
+      ({ matrix }) => countStandardizedJumps(matrix, deviations) > 0,
+    ).length;
+
+    const action = checkActions(dataset);
+    const actionEpisodes = action.messages.filter((message) =>
+      message.message.includes("sudden large action jumps"),
+    );
+    expect(actionEpisodes).toHaveLength(expected);
+    expect(
+      action.messages.some((message) => message.message.startsWith("...and ")),
+    ).toBe(false);
+
+    const perEpisode = checkPerEpisode(dataset);
+    expect(
+      perEpisode.messages.filter((message) =>
+        /Episode \d+: .*action jump/.test(message.message),
+      ),
+    ).toHaveLength(expected);
+    expect(
+      perEpisode.messages.some((message) =>
+        message.message.includes("more flagged episodes"),
+      ),
+    ).toBe(false);
   });
 });

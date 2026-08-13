@@ -6,7 +6,9 @@ import { resolveDatasetRoot } from "@/lib/local-dataset-paths";
 import {
   DOCTOR_CHECK_IDS,
   type DoctorCheckId,
+  type DoctorProgress,
   type DoctorRunResponse,
+  type DoctorStreamEvent,
 } from "@/types/doctor.types";
 
 export const runtime = "nodejs";
@@ -108,6 +110,115 @@ function remember(key: string, result: DoctorRunResponse): void {
   }
 }
 
+function jsonLine(event: DoctorStreamEvent): Uint8Array {
+  return new TextEncoder().encode(`${JSON.stringify(event)}\n`);
+}
+
+function streamCachedResult(result: DoctorRunResponse): Response {
+  const cached = {
+    ...result,
+    execution: { ...result.execution, cache_hit: true },
+  } satisfies DoctorRunResponse;
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          jsonLine({
+            type: "progress",
+            progress: {
+              phase: "complete",
+              completed: 1,
+              total: 1,
+              percent: 100,
+              overall_percent: 100,
+              message: "Loaded cached diagnosis",
+            },
+          }),
+        );
+        controller.enqueue(jsonLine({ type: "result", result: cached }));
+        controller.close();
+      },
+    }),
+    {
+      headers: {
+        "cache-control": "no-store",
+        "content-type": "application/x-ndjson; charset=utf-8",
+      },
+    },
+  );
+}
+
+function streamDoctorRun(
+  datasetRoot: string,
+  key: string,
+  options: { maxEpisodes: number | null; checks: DoctorCheckId[] | null },
+  controller: AbortController,
+  cleanup: () => void,
+): Response {
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(streamController) {
+        let closed = false;
+        const send = (event: DoctorStreamEvent) => {
+          if (closed) return;
+          try {
+            streamController.enqueue(jsonLine(event));
+          } catch {
+            closed = true;
+            controller.abort(abortError());
+          }
+        };
+        const close = () => {
+          if (closed) return;
+          closed = true;
+          streamController.close();
+        };
+
+        void runTypeScriptDoctor(datasetRoot, {
+          maxEpisodes: options.maxEpisodes,
+          checks: options.checks,
+          signal: controller.signal,
+          onProgress: (progress: DoctorProgress) =>
+            send({ type: "progress", progress }),
+        })
+          .then((result) => {
+            remember(key, result);
+            send({ type: "result", result });
+          })
+          .catch((error) => {
+            if (!isAbortError(error)) {
+              send({
+                type: "error",
+                error:
+                  controller.signal.reason instanceof DOMException &&
+                  controller.signal.reason.name === "TimeoutError"
+                    ? "Doctor timed out after 5 minutes."
+                    : error instanceof Error
+                      ? error.message
+                      : String(error),
+              });
+            }
+          })
+          .finally(() => {
+            cleanup();
+            close();
+          });
+      },
+      cancel() {
+        controller.abort(abortError());
+        cleanup();
+      },
+    }),
+    {
+      headers: {
+        "cache-control": "no-store",
+        "content-type": "application/x-ndjson; charset=utf-8",
+        "x-content-type-options": "nosniff",
+      },
+    },
+  );
+}
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ encodedPath: string }> },
@@ -138,10 +249,13 @@ export async function POST(
     return Response.json({ error: options.error }, { status: 400 });
 
   const key = `${dataset.root}:${dataset.signature}:${options.maxEpisodes ?? "all"}:${(options.checks ?? DOCTOR_CHECK_IDS).join(",")}`;
+  const wantsStream = request.nextUrl.searchParams.get("stream") === "1";
+  const forceRefresh = request.nextUrl.searchParams.get("refresh") === "1";
   const cached = cache.get(key);
-  if (cached && cached.expiresAt > Date.now()) {
+  if (!forceRefresh && cached && cached.expiresAt > Date.now()) {
     cache.delete(key);
     cache.set(key, cached);
+    if (wantsStream) return streamCachedResult(cached.result);
     return Response.json({
       ...cached.result,
       execution: { ...cached.result.execution, cache_hit: true },
@@ -158,6 +272,13 @@ export async function POST(
     DOCTOR_TIMEOUT_MS,
   );
   timeout.unref();
+
+  if (wantsStream) {
+    return streamDoctorRun(dataset.root, key, options, controller, () => {
+      clearTimeout(timeout);
+      request.signal.removeEventListener("abort", onRequestAbort);
+    });
+  }
 
   try {
     let pending = inFlight.get(key);

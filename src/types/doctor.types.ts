@@ -56,6 +56,24 @@ export interface DoctorRunResponse {
   execution: DoctorExecution;
 }
 
+export type DoctorProgressPhase = "loading" | "checks" | "complete";
+
+export interface DoctorProgress {
+  phase: DoctorProgressPhase;
+  completed: number;
+  total: number;
+  percent: number;
+  overall_percent: number;
+  message: string;
+  check_id?: DoctorCheckId;
+  check_name?: string;
+}
+
+export type DoctorStreamEvent =
+  | { type: "progress"; progress: DoctorProgress }
+  | { type: "result"; result: DoctorRunResponse }
+  | { type: "error"; error: string };
+
 /**
  * Extract explicit episode references from a Doctor message.
  *

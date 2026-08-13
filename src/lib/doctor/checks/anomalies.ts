@@ -273,10 +273,8 @@ export function checkPerEpisode(dataset: LoadedDoctorDataset) {
   result.warn(
     `${flagged.size}/${dataset.episodesData.length} episode(s) flagged`,
   );
-  for (const [episode, reasons] of [...flagged.entries()].slice(0, 20)) {
+  for (const [episode, reasons] of flagged) {
     result.warn(`Episode ${episode}: ${reasons.join("; ")}`);
   }
-  if (flagged.size > 20)
-    result.warn(`...and ${flagged.size - 20} more flagged episodes`);
   return result.build();
 }

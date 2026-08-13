@@ -6,6 +6,7 @@ import {
   extractAffectedDoctorEpisodeIds,
   extractDoctorEpisodeIdsFromMessage,
   type DoctorCheckResult,
+  type DoctorProgress,
   type DoctorReport,
   type DoctorRunResponse,
   type DoctorSeverity,
@@ -99,6 +100,51 @@ function Spinner() {
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+const INITIAL_PROGRESS: DoctorProgress = {
+  phase: "loading",
+  completed: 0,
+  total: 1,
+  percent: 0,
+  overall_percent: 0,
+  message: "Loading episode metadata and parquet data…",
+};
+
+function ProgressBar({ progress }: { progress: DoctorProgress }) {
+  const displayedPercent =
+    progress.phase === "loading"
+      ? Math.max(4, progress.overall_percent)
+      : progress.overall_percent;
+  return (
+    <div className="w-full max-w-xl" role="status" aria-live="polite">
+      <div className="mb-2 flex items-center justify-between gap-4 text-xs">
+        <span className="truncate text-slate-400">{progress.message}</span>
+        <span className="shrink-0 tabular text-cyan-300">
+          {progress.overall_percent}%
+        </span>
+      </div>
+      <div
+        className="h-2 overflow-hidden rounded-full bg-white/10"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={progress.overall_percent}
+        role="progressbar"
+      >
+        <div
+          className={`h-full rounded-full bg-cyan-400 transition-[width] duration-300 ${
+            progress.phase === "loading" ? "animate-pulse" : ""
+          }`}
+          style={{ width: `${displayedPercent}%` }}
+        />
+      </div>
+      {progress.phase === "checks" && (
+        <p className="mt-2 text-[11px] tabular text-slate-500">
+          {progress.completed}/{progress.total} checks completed
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -264,6 +310,7 @@ export default function DoctorPanel({
   );
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState<DoctorProgress>(INITIAL_PROGRESS);
   const [severityFilter, setSeverityFilter] = useState<"ALL" | DoctorSeverity>(
     "ALL",
   );
@@ -272,7 +319,7 @@ export default function DoctorPanel({
   const controllerRef = useRef<AbortController | null>(null);
 
   const run = useCallback(
-    async (limit: number | null) => {
+    async (limit: number | null, refresh = false) => {
       if (!encodedPath) {
         setError("Doctor is available for local datasets only.");
         return;
@@ -281,11 +328,16 @@ export default function DoctorPanel({
       const controller = new AbortController();
       controllerRef.current = controller;
       setRunning(true);
+      setProgress(INITIAL_PROGRESS);
       setError(null);
       try {
         const next = await runDatasetDoctor(encodedPath, {
           maxEpisodes: limit,
           signal: controller.signal,
+          refresh,
+          onProgress: (nextProgress) => {
+            if (!controller.signal.aborted) setProgress(nextProgress);
+          },
         });
         if (controller.signal.aborted) return;
         setResult(next);
@@ -328,10 +380,12 @@ export default function DoctorPanel({
     } else {
       setMaxEpisodes(DEFAULT_MAX_EPISODES);
       setResult(null);
-      void run(DEFAULT_MAX_EPISODES);
+      setError(null);
+      setProgress(INITIAL_PROGRESS);
+      setExpanded(new Set());
     }
     return () => controllerRef.current?.abort();
-  }, [encodedPath, run]);
+  }, [encodedPath]);
 
   const report = result?.report ?? null;
   const affectedEpisodeIds = useMemo(
@@ -414,7 +468,7 @@ export default function DoctorPanel({
           <button
             type="button"
             disabled={running || !encodedPath}
-            onClick={() => void run(maxEpisodes)}
+            onClick={() => void run(maxEpisodes, true)}
             className="inline-flex min-w-28 items-center justify-center gap-2 rounded-md bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {running && <Spinner />}
@@ -430,13 +484,27 @@ export default function DoctorPanel({
         </div>
       )}
 
-      {running && !report && (
+      {running && (
         <div
-          className="panel flex min-h-52 items-center justify-center gap-3 text-sm text-slate-400"
-          role="status"
+          className={`panel flex items-center justify-center gap-4 px-6 ${
+            report ? "min-h-28" : "min-h-52"
+          }`}
         >
           <Spinner />
-          Loading episode data and running 11 diagnostic checks…
+          <ProgressBar progress={progress} />
+        </div>
+      )}
+
+      {!running && !report && !error && (
+        <div className="panel flex min-h-52 items-center justify-center px-6 text-center">
+          <div>
+            <p className="text-sm font-medium text-slate-300">
+              Ready to diagnose
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Choose an episode range, then click Run Doctor.
+            </p>
+          </div>
         </div>
       )}
 

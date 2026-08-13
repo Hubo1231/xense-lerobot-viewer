@@ -26,6 +26,23 @@ const MAX_JSON_BYTES = 50 * 1024 * 1024;
 export interface LoadDoctorDatasetOptions {
   maxEpisodes: number | null;
   signal?: AbortSignal;
+  onProgress?: (progress: DoctorLoadProgress) => void;
+}
+
+export interface DoctorLoadProgress {
+  fraction: number;
+  message: string;
+}
+
+function reportLoadProgress(
+  options: LoadDoctorDatasetOptions,
+  fraction: number,
+  message: string,
+): void {
+  options.onProgress?.({
+    fraction: Math.max(0, Math.min(1, fraction)),
+    message,
+  });
 }
 
 async function pathExists(absolutePath: string): Promise<boolean> {
@@ -467,6 +484,7 @@ async function loadEpisodesFromMetadata(
   info: DoctorDatasetInfo,
   metas: DoctorEpisodeMeta[],
   signal?: AbortSignal,
+  onFileProgress?: (completed: number, total: number, message: string) => void,
 ): Promise<{ episodes: DoctorEpisodeData[]; warnings: string[] }> {
   interface LocatedEpisode {
     meta: DoctorEpisodeMeta;
@@ -534,8 +552,14 @@ async function loadEpisodesFromMetadata(
   }
 
   const episodes = new Map<number, DoctorEpisodeData>();
-  for (const [relPath, locations] of locationsByFile) {
+  const fileLocations = [...locationsByFile.entries()];
+  for (const [fileIndex, [relPath, locations]] of fileLocations.entries()) {
     throwIfDoctorAborted(signal);
+    onFileProgress?.(
+      fileIndex,
+      fileLocations.length,
+      `Loading data parquet ${fileIndex + 1}/${fileLocations.length}: ${relPath}`,
+    );
     let rangeStart = Number.POSITIVE_INFINITY;
     let rangeEnd = 0;
     for (const location of locations) {
@@ -587,6 +611,11 @@ async function loadEpisodesFromMetadata(
           )}${locations.length > 10 ? ", ..." : ""}]: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+    onFileProgress?.(
+      fileIndex + 1,
+      fileLocations.length,
+      `Loaded data parquet ${fileIndex + 1}/${fileLocations.length}`,
+    );
   }
   return {
     episodes: [...episodes.values()].sort(
@@ -608,11 +637,18 @@ async function loadEpisodesByScanning(
   root: string,
   maxEpisodes: number | null,
   signal?: AbortSignal,
+  onFileProgress?: (completed: number, total: number, message: string) => void,
 ): Promise<{ episodes: DoctorEpisodeData[]; warnings: string[] }> {
   const warnings: string[] = [];
   const grouped = new Map<number, DoctorEpisodeData>();
-  for (const relPath of await listFilesUnder(root, "data", ".parquet")) {
+  const parquetFiles = await listFilesUnder(root, "data", ".parquet");
+  for (const [fileIndex, relPath] of parquetFiles.entries()) {
     throwIfDoctorAborted(signal);
+    onFileProgress?.(
+      fileIndex,
+      parquetFiles.length,
+      `Scanning data parquet ${fileIndex + 1}/${parquetFiles.length}: ${relPath}`,
+    );
     let rows: DoctorRawRow[];
     try {
       rows = await readParquetFile(root, relPath, signal);
@@ -635,6 +671,11 @@ async function loadEpisodesByScanning(
       }
       appendRowToEpisode(grouped, index, row);
     }
+    onFileProgress?.(
+      fileIndex + 1,
+      parquetFiles.length,
+      `Scanned data parquet ${fileIndex + 1}/${parquetFiles.length}`,
+    );
     if (maxEpisodes !== null && grouped.size >= maxEpisodes) break;
   }
   const sorted = [...grouped.values()].sort(
@@ -725,12 +766,19 @@ export async function loadDoctorDataset(
   options: LoadDoctorDatasetOptions,
 ): Promise<LoadedDoctorDataset> {
   throwIfDoctorAborted(options.signal);
+  reportLoadProgress(options, 0, "Reading dataset info and scanning files…");
   const [{ info, error: infoError }, inventory] = await Promise.all([
     loadInfo(root),
     buildInventory(root, options.signal),
   ]);
+  reportLoadProgress(
+    options,
+    0.15,
+    "Loading episode, task, and statistics metadata…",
+  );
 
   if (!info) {
+    reportLoadProgress(options, 1, "Dataset metadata could not be loaded");
     return {
       root,
       displayPath: root,
@@ -761,18 +809,40 @@ export async function loadDoctorDataset(
     loadTasks(root),
     loadStats(root),
   ]);
+  reportLoadProgress(
+    options,
+    0.3,
+    `Loading frame data for ${metaResult.selected.length.toLocaleString()} episodes…`,
+  );
   let dataResult = await loadEpisodesFromMetadata(
     root,
     info,
     metaResult.selected,
     options.signal,
+    (completed, total, message) =>
+      reportLoadProgress(
+        options,
+        0.3 + (total > 0 ? (completed / total) * 0.45 : 0.45),
+        message,
+      ),
   );
   if (!hasAllEpisodeData(dataResult.episodes, metaResult.selected)) {
     const metadataWarnings = dataResult.warnings;
+    reportLoadProgress(
+      options,
+      0.75,
+      "Episode metadata mappings were incomplete; scanning data parquets…",
+    );
     const scannedResult = await loadEpisodesByScanning(
       root,
       options.maxEpisodes,
       options.signal,
+      (completed, total, message) =>
+        reportLoadProgress(
+          options,
+          0.75 + (total > 0 ? (completed / total) * 0.23 : 0.23),
+          message,
+        ),
     );
     // Prefer the scan when metadata points at stale/wrong shards, matching the
     // original Doctor loader's episode-index based behavior. Keep metadata
@@ -786,6 +856,12 @@ export async function loadDoctorDataset(
       dataResult.warnings = [...metadataWarnings, ...scannedResult.warnings];
     }
   }
+
+  reportLoadProgress(
+    options,
+    1,
+    `Loaded ${dataResult.episodes.length.toLocaleString()} episodes`,
+  );
 
   return {
     root,
