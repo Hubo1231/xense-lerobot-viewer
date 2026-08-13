@@ -479,7 +479,8 @@ export default function DoctorPanel({
           <p className="mt-1 max-w-2xl text-sm text-slate-400">
             Native TypeScript dataset quality diagnostics. Checks metadata,
             timing, actions, videos, statistics, episode consistency, training
-            readiness, anomalies, and portability without a Python runtime.
+            readiness, anomalies, dimension-level jumps, and portability without
+            a Python runtime.
           </p>
           <p
             className="mt-1 truncate text-xs text-slate-500"

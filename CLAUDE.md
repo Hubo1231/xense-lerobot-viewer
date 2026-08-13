@@ -151,11 +151,11 @@ The **Parquet** tab (`src/components/parquet-table-panel.tsx`, last in the tab r
 
 ### Doctor (native TypeScript diagnostics)
 
-The **Doctor** tab (`src/components/doctor-panel.tsx`, immediately after Action Insights) runs 11 dataset checks locally and renders the structured PASS/WARN/FAIL report. It is a TypeScript port of the read-only diagnostic concepts from `lerobot-doctor`; do not add back a Python bridge, `PYTHON_BIN`, PyAV/OpenCV, or a remote Space iframe.
+The **Doctor** tab (`src/components/doctor-panel.tsx`, immediately after Action Insights) runs 12 dataset checks locally and renders the structured PASS/WARN/FAIL report. It is a TypeScript port of the read-only diagnostic concepts from `lerobot-doctor`; do not add back a Python bridge, `PYTHON_BIN`, PyAV/OpenCV, or a remote Space iframe.
 
 - `POST /api/local-datasets/[encodedPath]/doctor` validates scope/check IDs, applies a 5-minute abort timeout, deduplicates identical in-flight work, and keeps a bounded 5-minute result cache.
 - `src/lib/doctor/loader.ts` reads `info.json`, JSONL metadata, and raw Parquet values through the shared Node-side `hyparquet` handle. v2 computes per-episode paths; v3 uses episode metadata shard and global-index row ranges. The default is the first 25 episodes; directory inventory checks remain dataset-wide.
-- `src/lib/doctor/checks/` holds the 11 checks. MP4 files are structurally parsed in TypeScript (`ftyp`/`moov`/`mdat`, video track, dimensions, timing/sample count); this intentionally avoids native codecs and does not claim to decode a frame.
+- `src/lib/doctor/checks/` holds the 12 checks. MP4 files are structurally parsed in TypeScript (`ftyp`/`moov`/`mdat`, video track, dimensions, timing/sample count); this intentionally avoids native codecs and does not claim to decode a frame. The separate dimension-level jump check supplements (but does not alter) the Python-compatible mean-z-score action check.
 - The report schema lives in `src/types/doctor.types.ts`. Messages that explicitly name episode IDs feed `FlaggedEpisodesProvider` through its pure extraction helpers.
 - Read-only: Doctor never runs fix/trim commands and never writes dataset files.
 
@@ -183,7 +183,7 @@ The **Doctor** tab (`src/components/doctor-panel.tsx`, immediately after Action 
 | `src/utils/subtasksClient.ts`                                     | Client for the `…/[encodedPath]/subtasks` + `/subtasks/export` routes                                                                                              |
 | `src/lib/local-dataset-paths.ts`                                  | Shared server path resolution + traversal guard for every per-dataset route                                                                                        |
 | `src/lib/parquet-server.ts`                                       | Node-side hyparquet reader: LRU file handles, schema→type strings, `readParquetPage`, `locateEpisodeRows`                                                          |
-| `src/lib/doctor/`                                                 | Native TypeScript Doctor loader, math helpers, MP4 structural probe, 11 checks, and report runner                                                                  |
+| `src/lib/doctor/`                                                 | Native TypeScript Doctor loader, math helpers, MP4 structural probe, 12 checks, and report runner                                                                  |
 | `src/components/doctor-panel.tsx`                                 | Doctor scope controls, report filters/download, and affected-episode flagging                                                                                      |
 | `src/components/parquet-table-panel.tsx`                          | Parquet tab: file picker, column picker, paged sticky table, cell expansion, CSV export                                                                            |
 | `src/utils/parquetBrowser.ts`                                     | Pure helpers: `toJsonSafe`, `describeCell`, `defaultColumnSelection`, `rowsToCsv`, file classify/sort                                                              |

@@ -7,6 +7,7 @@ import {
   checkTemporal,
 } from "../checks/core";
 import { checkPerEpisode } from "../checks/anomalies";
+import { checkDimensionJumps } from "../checks/jumps";
 import { getColumnDiffSummary, getColumnMatrices } from "../analysis";
 import { countStandardizedJumps, summaryStandardDeviations } from "../math";
 
@@ -220,5 +221,29 @@ describe("native Doctor checks", () => {
         message.message.includes("more flagged episodes"),
       ),
     ).toBe(false);
+  });
+
+  it("reports coordinated state jumps without changing the action check", () => {
+    const dataset = datasetFixture();
+    dataset.info!.features["observation.state"] = {
+      dtype: "float32",
+      shape: [2],
+      names: ["left_tcp.x", "left_tcp.y"],
+    };
+    dataset.episodesData[0].columns["observation.state"] = Array.from(
+      { length: 5_000 },
+      (_, frame) => (frame === 2_500 ? [100, 100] : [0, 0]),
+    );
+
+    const result = checkDimensionJumps(dataset);
+    expect(result.severity).toBe("WARN");
+    expect(
+      result.messages.some(
+        (message) =>
+          message.message.includes("Episode 0") &&
+          message.message.includes("left_tcp.x") &&
+          message.message.includes("left_tcp.y"),
+      ),
+    ).toBe(true);
   });
 });

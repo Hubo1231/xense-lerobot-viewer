@@ -12,6 +12,7 @@ import {
 import { loadDoctorDataset } from "./loader";
 import { throwIfDoctorAborted, type LoadedDoctorDataset } from "./model";
 import { checkAnomalies, checkPerEpisode } from "./checks/anomalies";
+import { checkDimensionJumps } from "./checks/jumps";
 import {
   checkActions,
   checkConsistency,
@@ -42,6 +43,7 @@ const CHECKS: Record<
   metadata: checkMetadata,
   temporal: checkTemporal,
   actions: checkActions,
+  dimension_jumps: checkDimensionJumps,
   videos: checkVideos,
   statistics: checkStatistics,
   episodes: checkEpisodes,
@@ -56,6 +58,7 @@ const CHECK_NAMES: Record<DoctorCheckId, string> = {
   metadata: "Metadata & Format Compliance",
   temporal: "Temporal Consistency",
   actions: "Action Quality",
+  dimension_jumps: "Dimension-Level Jump Detection",
   videos: "Video Integrity",
   statistics: "Data Distribution",
   episodes: "Episode Health",

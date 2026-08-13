@@ -2,6 +2,7 @@ export const DOCTOR_CHECK_IDS = [
   "metadata",
   "temporal",
   "actions",
+  "dimension_jumps",
   "videos",
   "statistics",
   "episodes",
