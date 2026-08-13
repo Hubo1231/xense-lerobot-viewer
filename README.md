@@ -12,6 +12,7 @@ This fork removes the Hugging Face Hub remote-loading path; everything reads fro
 - **Synchronized video + telemetry**: episode pages play all cameras side-by-side, synced to interactive Recharts time series for `observation.state`, `action`, and other signals.
 - **Language annotations editor** (lerobot v3.1 schema): an **Annotations** tab for authoring per-episode language atoms — subtasks, plans, memory, task rephrasings, interjections, robot speech, and VQA. Draw a bounding box or click a keypoint directly on any video for grounded VQA, arrange events on a multi-track timeline, and edit each atom in an inspector. Saves to `meta/lerobot_annotations.json` inside the dataset. See [Annotating episodes](#annotating-episodes) below.
 - **Statistics, Frames, Action Insights, Filtering** panels for dataset quality inspection — flagged episodes can be exported as a ready-to-run LeRobot CLI command.
+- **Doctor**: read-only, dataset-wide diagnostics immediately after Action Insights. Its native TypeScript engine runs 11 checks over metadata, timing, actions, video containers, statistics, episode consistency, training readiness, anomalies, and portability; it needs no Python runtime and can send affected episode IDs into the existing flagged-episode workflow.
 - **3D URDF replay** for SO-100, SO-101, and OpenArm bimanual robots, with auto-matched joint mapping that tolerates `.pos` / `.position` / `.q` column suffixes. URDF assets load from the public Hugging Face `lerobot/robot-urdfs` bucket.
 - **Per-card "Open episode N" shortcut**: jump straight to a specific episode from the homepage card.
 - Supports dataset codebase versions **v2.0 / v2.1 / v3.0** (autodetected from `meta/info.json`).
@@ -193,6 +194,7 @@ This fork is **local-only**: there is no FastAPI backend and no push-to-Hub. Wri
 ## Architecture notes
 
 - Dataset files are served by an internal route `/api/local-datasets/[encodedPath]/[...filePath]` with HTTP range support for video streaming.
+- The Doctor tab posts to `…/[encodedPath]/doctor`. The route loads JSON/JSONL and Parquet directly in Node/Bun with `hyparquet`, runs the checks in TypeScript, and returns a structured PASS/WARN/FAIL report. It is read-only, defaults to the first 25 episodes for data-backed checks, samples at most 20 physical videos for MP4 structure/track metadata, and offers 10/25/50/100/full scopes.
 - Dataset-level sidecars are read/written through dedicated routes: `…/[encodedPath]/tags` (`xense_tags.json`) and `…/[encodedPath]/annotations` (`lerobot_annotations.json`).
 - The homepage discovers datasets via `src/lib/local-datasets-discovery.ts`.
 - All cloud/HF Hub loading code (OAuth, proxy, search) has been removed.
@@ -230,3 +232,5 @@ docker run -p 7860:7860 \
 ## Acknowledgement
 
 This project is forked from the LeRobot dataset visualizer originally created by [@Mishig25](https://github.com/mishig25) (huggingface/lerobot PR [#1055](https://github.com/huggingface/lerobot/pull/1055)).
+
+The Doctor checks are a TypeScript port of the diagnostic concepts from [`lerobot-doctor`](https://github.com/jashshah999/lerobot-doctor) by Jash Shah (Apache-2.0); no Python package or subprocess is used by this integration.
