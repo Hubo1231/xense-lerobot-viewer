@@ -1,18 +1,13 @@
 name: Tests
 
+# No `paths:` filter on purpose: `test` is a required status check on main, and
+# a filtered workflow never reports on PRs that miss the filter — those PRs would
+# sit at "pending" forever. The suite runs in ~15s, so gating every PR is cheap.
 on:
   push:
     branches: [main]
-    paths:
-      - "src/**"
-      - "*.json"
-      - ".github/workflows/test.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "src/**"
-      - "*.json"
-      - ".github/workflows/test.yml"
 
 jobs:
   test:
