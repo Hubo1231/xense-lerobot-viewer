@@ -29,7 +29,7 @@ function formatTotalTime(totalFrames: number, fps: number): string {
 }
 
 /** SVG bar chart for the episode-length histogram */
-function EpisodeLengthHistogram({
+export function EpisodeLengthHistogram({
   data,
   episodes,
   binning,

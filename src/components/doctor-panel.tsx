@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { EpisodeLengthStats } from "@/app/[org]/[dataset]/[episode]/fetch-data";
+import { EpisodeLengthHistogram } from "@/components/stats-panel";
 import { useFlaggedEpisodes } from "@/context/flagged-episodes-context";
 import {
   DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS,
@@ -16,6 +18,7 @@ import {
   type DoctorSeverity,
 } from "@/types/doctor.types";
 import { runDatasetDoctor } from "@/utils/doctorClient";
+import { assignEpisodesToBins } from "@/utils/episodeLengthHistogram";
 
 const DEFAULT_MAX_EPISODES: number | null = null;
 const DEFAULT_CUSTOM_RANGE: DoctorEpisodeRange = { start: 10, end: 100 };
@@ -351,11 +354,15 @@ function CheckCard({
 interface DoctorPanelProps {
   encodedPath: string | null;
   datasetName: string;
+  episodeLengthStats: EpisodeLengthStats | null;
+  episodeLengthStatsLoading: boolean;
 }
 
 export default function DoctorPanel({
   encodedPath,
   datasetName,
+  episodeLengthStats,
+  episodeLengthStatsLoading,
 }: DoctorPanelProps) {
   const { addMany } = useFlaggedEpisodes();
   const cached = encodedPath ? doctorRunCache.get(encodedPath) : undefined;
@@ -555,6 +562,30 @@ export default function DoctorPanel({
     if (execution.requested_max_episodes === null) return "full dataset";
     return `first ${execution.requested_max_episodes} episodes`;
   }, [result?.execution]);
+  const episodeLengthDistributionCopyText = useMemo(() => {
+    if (episodeLengthStatsLoading) {
+      return "Episode Length Distribution (Statistics, full dataset): loading";
+    }
+    if (
+      !episodeLengthStats ||
+      episodeLengthStats.episodeLengthHistogram.length === 0
+    ) {
+      return "Episode Length Distribution (Statistics, full dataset): unavailable";
+    }
+
+    const episodeIndicesByBin = assignEpisodesToBins(
+      episodeLengthStats.allEpisodeLengths,
+      episodeLengthStats.episodeLengthHistogramBinning,
+    );
+    const bins = episodeLengthStats.episodeLengthHistogram.map((bin, index) => {
+      const episodeIndices = episodeIndicesByBin[index] ?? [];
+      return `  Bin ${index + 1} — ${bin.binLabel}: ${bin.count} episode${bin.count === 1 ? "" : "s"} — ${episodeIndices.length > 0 ? episodeIndices.join(", ") : "None"}`;
+    });
+    return [
+      `Episode Length Distribution (Statistics, full dataset; ${bins.length} bin${bins.length === 1 ? "" : "s"}):`,
+      ...bins,
+    ].join("\n");
+  }, [episodeLengthStats, episodeLengthStatsLoading]);
   const doctorDetailsCopyText = useMemo(() => {
     if (!report) return "";
     const name = datasetName.trim() || report.dataset_name || "Unknown dataset";
@@ -590,6 +621,8 @@ export default function DoctorPanel({
       "  Report related dimensions: >8σ",
       "  Display limit: 5 events per episode and signal",
       "",
+      episodeLengthDistributionCopyText,
+      "",
       "Checks:",
       checks,
     ].join("\n");
@@ -598,6 +631,7 @@ export default function DoctorPanel({
     affectedEpisodeIds,
     datasetName,
     doctorScopeLabel,
+    episodeLengthDistributionCopyText,
     report,
     result,
   ]);
@@ -823,6 +857,41 @@ export default function DoctorPanel({
         </div>
       )}
 
+      <section className="panel space-y-4 p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-sm font-medium text-slate-200">
+            Episode Length Distribution
+          </h3>
+          <p className="text-[11px] text-slate-500">
+            Statistics · full dataset
+            {episodeLengthStats
+              ? ` · ${episodeLengthStats.episodeLengthHistogram.length} bins`
+              : ""}
+          </p>
+        </div>
+
+        {episodeLengthStatsLoading ? (
+          <div
+            className="flex min-h-40 items-center justify-center gap-3 text-xs text-slate-500"
+            role="status"
+          >
+            <Spinner />
+            Loading episode length distribution…
+          </div>
+        ) : episodeLengthStats &&
+          episodeLengthStats.episodeLengthHistogram.length > 0 ? (
+          <EpisodeLengthHistogram
+            data={episodeLengthStats.episodeLengthHistogram}
+            episodes={episodeLengthStats.allEpisodeLengths}
+            binning={episodeLengthStats.episodeLengthHistogramBinning}
+          />
+        ) : (
+          <p className="py-8 text-center text-xs text-slate-500">
+            Episode length distribution is unavailable for this dataset.
+          </p>
+        )}
+      </section>
+
       {running && (
         <div
           className={`panel flex items-center justify-center gap-4 px-6 ${
@@ -1007,13 +1076,21 @@ export default function DoctorPanel({
                 )}
                 <button
                   type="button"
-                  disabled={!doctorDetailsCopyText}
+                  disabled={!doctorDetailsCopyText || episodeLengthStatsLoading}
                   onClick={() => void copyDoctorDetails()}
-                  title="Copy dataset, affected episodes, and Doctor parameters"
-                  aria-label="Copy dataset, affected episodes, and Doctor parameters"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-violet-400/25 bg-violet-400/10 px-3 py-2 text-xs font-medium text-violet-300 transition-colors hover:border-violet-400/50 hover:bg-violet-400/15"
+                  title={
+                    episodeLengthStatsLoading
+                      ? "Waiting for the episode length distribution"
+                      : "Copy all Doctor checks and the episode length distribution"
+                  }
+                  aria-label="Copy all Doctor checks and the episode length distribution"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-violet-400/25 bg-violet-400/10 px-3 py-2 text-xs font-medium text-violet-300 transition-colors hover:border-violet-400/50 hover:bg-violet-400/15 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {copiedDoctorDetails ? "Copied details" : "Copy details"}
+                  {copiedDoctorDetails
+                    ? "Copied details"
+                    : episodeLengthStatsLoading
+                      ? "Preparing details…"
+                      : "Copy details"}
                 </button>
               </>
             )}

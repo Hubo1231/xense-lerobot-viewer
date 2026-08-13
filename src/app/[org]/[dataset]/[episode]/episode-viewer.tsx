@@ -463,6 +463,7 @@ function EpisodeViewerInner({
   // Re-trigger data loading for the restored tab on mount
   useEffect(() => {
     if (activeTab === "statistics") loadStats();
+    if (activeTab === "doctor") loadStats();
     if (activeTab === "frames") loadFrames();
     if (activeTab === "insights") loadInsights();
     if (activeTab === "filtering") {
@@ -475,6 +476,7 @@ function EpisodeViewerInner({
   const handleTabChange = (tab: ActiveTab) => {
     setActiveTab(tab);
     if (tab === "statistics") loadStats();
+    if (tab === "doctor") loadStats();
     if (tab === "frames") loadFrames();
     if (tab === "insights") loadInsights();
     if (tab === "filtering") {
@@ -868,6 +870,8 @@ function EpisodeViewerInner({
               <DoctorPanel
                 encodedPath={encodedDatasetPath}
                 datasetName={datasetDisplayName}
+                episodeLengthStats={episodeLengthStats}
+                episodeLengthStatsLoading={statsLoading}
               />
             </Suspense>
           )}
