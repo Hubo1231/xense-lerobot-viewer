@@ -1,8 +1,10 @@
 import path from "node:path";
 import {
+  DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS,
   DOCTOR_CHECK_IDS,
   type DoctorCheckId,
   type DoctorCheckResult,
+  type DoctorDimensionJumpThresholds,
   type DoctorEpisodeRange,
   type DoctorProgress,
   type DoctorReport,
@@ -29,6 +31,7 @@ export const TYPESCRIPT_DOCTOR_VERSION = "1.0.0-ts";
 export interface RunDoctorOptions {
   maxEpisodes: number | null;
   episodeRange?: DoctorEpisodeRange | null;
+  dimensionJumpThresholds?: DoctorDimensionJumpThresholds;
   checks?: DoctorCheckId[] | null;
   signal?: AbortSignal;
   onProgress?: (progress: DoctorProgress) => void;
@@ -130,6 +133,8 @@ export async function runTypeScriptDoctor(
   const selected = options.checks?.length
     ? options.checks
     : [...DOCTOR_CHECK_IDS];
+  const dimensionJumpThresholds =
+    options.dimensionJumpThresholds ?? DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS;
   reportProgress(options, {
     phase: "checks",
     completed: 0,
@@ -147,7 +152,11 @@ export async function runTypeScriptDoctor(
       check_name: CHECK_NAMES[checkId],
       message: `Running ${CHECK_NAMES[checkId]} (${index + 1}/${selected.length})…`,
     });
-    checks.push(await CHECKS[checkId](dataset));
+    checks.push(
+      await (checkId === "dimension_jumps"
+        ? checkDimensionJumps(dataset, dimensionJumpThresholds)
+        : CHECKS[checkId](dataset)),
+    );
     reportProgress(options, {
       phase: "checks",
       completed: index + 1,
@@ -180,6 +189,7 @@ export async function runTypeScriptDoctor(
       duration_ms: Math.max(0, Math.round(performance.now() - startedAt)),
       requested_max_episodes: options.maxEpisodes,
       requested_episode_range: options.episodeRange ?? null,
+      dimension_jump_thresholds: { ...dimensionJumpThresholds },
       loaded_episode_count: dataset.episodesData.length,
       loaded_episode_indices: dataset.episodesData.map(
         (episode) => episode.episodeIndex,

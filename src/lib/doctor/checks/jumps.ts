@@ -9,6 +9,11 @@ import {
   type DoctorEpisodeData,
   type LoadedDoctorDataset,
 } from "../model";
+import {
+  DOCTOR_DIMENSION_JUMP_REPORT_Z_THRESHOLD,
+  DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS,
+  type DoctorDimensionJumpThresholds,
+} from "@/types/doctor.types";
 
 const SKIP_COLUMNS = new Set([
   "timestamp",
@@ -18,11 +23,16 @@ const SKIP_COLUMNS = new Set([
   "task_index",
 ]);
 
-const DIMENSION_Z_THRESHOLD = 30;
 const MIN_COORDINATED_DIMENSIONS = 2;
-const EXTREME_SINGLE_DIMENSION_Z = 40;
-const REPORT_DIMENSION_Z_THRESHOLD = 8;
 const MAX_EVENTS_PER_EPISODE = 5;
+
+function maximum(values: number[]): number {
+  let value = Number.NEGATIVE_INFINITY;
+  for (const candidate of values) {
+    if (candidate > value) value = candidate;
+  }
+  return value;
+}
 
 function signalColumns(dataset: LoadedDoctorDataset): string[] {
   const columns = Object.keys(dataset.episodesData[0]?.columns ?? {});
@@ -89,7 +99,10 @@ function formatEvent(
  * different failure mode: a small subset of coordinates jumping together,
  * which the mean can hide in a high-dimensional vector.
  */
-export function checkDimensionJumps(dataset: LoadedDoctorDataset) {
+export function checkDimensionJumps(
+  dataset: LoadedDoctorDataset,
+  thresholds: DoctorDimensionJumpThresholds = DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS,
+) {
   const result = new DoctorCheckBuilder("Dimension-Level Jump Detection");
   if (dataset.episodesData.length === 0) {
     result.warn("No episode data loaded");
@@ -121,10 +134,10 @@ export function checkDimensionJumps(dataset: LoadedDoctorDataset) {
         matrix,
         standardDeviations,
         {
-          threshold: DIMENSION_Z_THRESHOLD,
+          threshold: thresholds.dimensionZThreshold,
           minDimensions: MIN_COORDINATED_DIMENSIONS,
-          extremeThreshold: EXTREME_SINGLE_DIMENSION_Z,
-          reportThreshold: REPORT_DIMENSION_Z_THRESHOLD,
+          extremeThreshold: thresholds.extremeSingleDimensionZ,
+          reportThreshold: DOCTOR_DIMENSION_JUMP_REPORT_Z_THRESHOLD,
         },
       );
       if (events.length === 0) continue;
@@ -132,10 +145,7 @@ export function checkDimensionJumps(dataset: LoadedDoctorDataset) {
       columnEpisodes += 1;
       columnEvents += events.length;
       const details = [...events]
-        .sort(
-          (left, right) =>
-            Math.max(...right.zScores) - Math.max(...left.zScores),
-        )
+        .sort((left, right) => maximum(right.zScores) - maximum(left.zScores))
         .slice(0, MAX_EVENTS_PER_EPISODE)
         .map((event) =>
           formatEvent(dataset, episode, columnName, matrix, event),
@@ -152,7 +162,7 @@ export function checkDimensionJumps(dataset: LoadedDoctorDataset) {
       totalEvents += columnEvents;
       totalFlaggedEpisodes += columnEpisodes;
       result.warn(
-        `${columnName}: ${columnEpisodes}/${dataset.episodesData.length} episode(s) contain ${columnEvents} severe dimension-level jump event(s) (>=${MIN_COORDINATED_DIMENSIONS} dimensions >${DIMENSION_Z_THRESHOLD}σ or one >${EXTREME_SINGLE_DIMENSION_Z}σ)`,
+        `${columnName}: ${columnEpisodes}/${dataset.episodesData.length} episode(s) contain ${columnEvents} severe dimension-level jump event(s) (>=${MIN_COORDINATED_DIMENSIONS} dimensions >${thresholds.dimensionZThreshold}σ or one >${thresholds.extremeSingleDimensionZ}σ)`,
       );
     } else {
       result.pass(`${columnName}: no dimension-level jumps detected`);

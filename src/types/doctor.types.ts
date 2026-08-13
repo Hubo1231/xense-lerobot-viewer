@@ -27,6 +27,22 @@ export interface DoctorCheckResult {
   messages: DoctorMessage[];
 }
 
+export interface DoctorDimensionJumpThresholds {
+  /** Per-dimension z-score used by the coordinated multi-dimension trigger. */
+  dimensionZThreshold: number;
+  /** Per-dimension z-score that allows one dimension to trigger by itself. */
+  extremeSingleDimensionZ: number;
+}
+
+export const DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS: DoctorDimensionJumpThresholds =
+  {
+    dimensionZThreshold: 30,
+    extremeSingleDimensionZ: 40,
+  };
+
+export const MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD = 1_000;
+export const DOCTOR_DIMENSION_JUMP_REPORT_Z_THRESHOLD = 8;
+
 /** Stable report schema shared with the original lerobot-doctor UI contract. */
 export interface DoctorReport {
   version: string;
@@ -46,6 +62,7 @@ export interface DoctorExecution {
   duration_ms: number;
   requested_max_episodes: number | null;
   requested_episode_range: DoctorEpisodeRange | null;
+  dimension_jump_thresholds?: DoctorDimensionJumpThresholds;
   loaded_episode_count: number;
   loaded_episode_indices: number[];
   engine: "typescript";

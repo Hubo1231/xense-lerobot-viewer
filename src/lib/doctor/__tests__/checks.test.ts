@@ -246,4 +246,33 @@ describe("native Doctor checks", () => {
       ),
     ).toBe(true);
   });
+
+  it("uses configurable thresholds for dimension-level jumps", () => {
+    const dataset = datasetFixture();
+    dataset.episodesData[0].columns.action = Array.from(
+      { length: 5_000 },
+      () => [0, 0],
+    );
+    dataset.episodesData[0].columns["observation.state"] = Array.from(
+      { length: 5_000 },
+      (_, frame) => (frame === 2_500 ? [100, 100] : [0, 0]),
+    );
+
+    const strict = checkDimensionJumps(dataset, {
+      dimensionZThreshold: 60,
+      extremeSingleDimensionZ: 70,
+    });
+    expect(strict.severity).toBe("PASS");
+
+    const sensitive = checkDimensionJumps(dataset, {
+      dimensionZThreshold: 45,
+      extremeSingleDimensionZ: 70,
+    });
+    expect(sensitive.severity).toBe("WARN");
+    expect(
+      sensitive.messages.some((message) =>
+        message.message.includes(">45σ or one >70σ"),
+      ),
+    ).toBe(true);
+  });
 });

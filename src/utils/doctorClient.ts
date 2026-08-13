@@ -1,5 +1,6 @@
 import type {
   DoctorCheckId,
+  DoctorDimensionJumpThresholds,
   DoctorEpisodeRange,
   DoctorProgress,
   DoctorRunResponse,
@@ -9,6 +10,7 @@ import type {
 export interface RunDoctorOptions {
   maxEpisodes: number | null;
   episodeRange?: DoctorEpisodeRange | null;
+  dimensionJumpThresholds?: DoctorDimensionJumpThresholds;
   checks?: DoctorCheckId[];
   signal?: AbortSignal;
   onProgress?: (progress: DoctorProgress) => void;
@@ -50,6 +52,7 @@ export async function runDatasetDoctor(
       body: JSON.stringify({
         maxEpisodes: options.maxEpisodes,
         episodeRange: options.episodeRange,
+        dimensionJumpThresholds: options.dimensionJumpThresholds,
         checks: options.checks,
       }),
     },

@@ -4,8 +4,11 @@ import { NextRequest } from "next/server";
 import { runTypeScriptDoctor } from "@/lib/doctor/runner";
 import { resolveDatasetRoot } from "@/lib/local-dataset-paths";
 import {
+  DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS,
   DOCTOR_CHECK_IDS,
+  MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD,
   type DoctorCheckId,
+  type DoctorDimensionJumpThresholds,
   type DoctorEpisodeRange,
   type DoctorProgress,
   type DoctorRunResponse,
@@ -25,6 +28,7 @@ const CHECK_IDS = new Set<string>(DOCTOR_CHECK_IDS);
 interface DoctorRequestBody {
   maxEpisodes?: unknown;
   episodeRange?: unknown;
+  dimensionJumpThresholds?: unknown;
   checks?: unknown;
 }
 
@@ -40,6 +44,7 @@ function parseOptions(body: DoctorRequestBody):
   | {
       maxEpisodes: number | null;
       episodeRange: DoctorEpisodeRange | null;
+      dimensionJumpThresholds: DoctorDimensionJumpThresholds;
       checks: DoctorCheckId[] | null;
     }
   | { error: string } {
@@ -103,7 +108,44 @@ function parseOptions(body: DoctorRequestBody):
     }
     checks = unique as DoctorCheckId[];
   }
-  return { maxEpisodes, episodeRange, checks };
+
+  let dimensionJumpThresholds = DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS;
+  if (body.dimensionJumpThresholds !== undefined) {
+    const value = body.dimensionJumpThresholds;
+    if (
+      !value ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      !("dimensionZThreshold" in value) ||
+      !("extremeSingleDimensionZ" in value)
+    ) {
+      return {
+        error:
+          "dimensionJumpThresholds must contain dimensionZThreshold and extremeSingleDimensionZ.",
+      };
+    }
+    const dimensionZThreshold = value.dimensionZThreshold;
+    const extremeSingleDimensionZ = value.extremeSingleDimensionZ;
+    if (
+      typeof dimensionZThreshold !== "number" ||
+      typeof extremeSingleDimensionZ !== "number" ||
+      !Number.isFinite(dimensionZThreshold) ||
+      !Number.isFinite(extremeSingleDimensionZ) ||
+      dimensionZThreshold <= 0 ||
+      extremeSingleDimensionZ <= 0 ||
+      dimensionZThreshold > MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD ||
+      extremeSingleDimensionZ > MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD
+    ) {
+      return {
+        error: `Dimension jump z-score thresholds must be greater than 0 and at most ${MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD}.`,
+      };
+    }
+    dimensionJumpThresholds = {
+      dimensionZThreshold,
+      extremeSingleDimensionZ,
+    };
+  }
+  return { maxEpisodes, episodeRange, dimensionJumpThresholds, checks };
 }
 
 async function validateDatasetRoot(encodedPath: string): Promise<{
@@ -189,6 +231,7 @@ function streamDoctorRun(
   options: {
     maxEpisodes: number | null;
     episodeRange: DoctorEpisodeRange | null;
+    dimensionJumpThresholds: DoctorDimensionJumpThresholds;
     checks: DoctorCheckId[] | null;
   },
   controller: AbortController,
@@ -216,6 +259,7 @@ function streamDoctorRun(
         void runTypeScriptDoctor(datasetRoot, {
           maxEpisodes: options.maxEpisodes,
           episodeRange: options.episodeRange,
+          dimensionJumpThresholds: options.dimensionJumpThresholds,
           checks: options.checks,
           signal: controller.signal,
           onProgress: (progress: DoctorProgress) =>
@@ -291,7 +335,8 @@ export async function POST(
   const scopeKey = options.episodeRange
     ? `range-${options.episodeRange.start}-${options.episodeRange.end}`
     : (options.maxEpisodes ?? "all");
-  const key = `${dataset.root}:${dataset.signature}:${scopeKey}:${(options.checks ?? DOCTOR_CHECK_IDS).join(",")}`;
+  const thresholdKey = `${options.dimensionJumpThresholds.dimensionZThreshold}-${options.dimensionJumpThresholds.extremeSingleDimensionZ}`;
+  const key = `${dataset.root}:${dataset.signature}:${scopeKey}:jumps-${thresholdKey}:${(options.checks ?? DOCTOR_CHECK_IDS).join(",")}`;
   const wantsStream = request.nextUrl.searchParams.get("stream") === "1";
   const forceRefresh = request.nextUrl.searchParams.get("refresh") === "1";
   const cached = cache.get(key);
@@ -329,6 +374,7 @@ export async function POST(
       pending = runTypeScriptDoctor(dataset.root, {
         maxEpisodes: options.maxEpisodes,
         episodeRange: options.episodeRange,
+        dimensionJumpThresholds: options.dimensionJumpThresholds,
         checks: options.checks,
         signal: controller.signal,
       });

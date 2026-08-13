@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFlaggedEpisodes } from "@/context/flagged-episodes-context";
 import {
+  DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS,
+  MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD,
   extractAffectedDoctorEpisodeIds,
   extractDoctorEpisodeIdsFromMessage,
   type DoctorCheckResult,
+  type DoctorDimensionJumpThresholds,
   type DoctorEpisodeRange,
   type DoctorProgress,
   type DoctorReport,
@@ -35,6 +38,7 @@ interface DoctorScope {
 interface CachedDoctorRun {
   maxEpisodes: number | null;
   episodeRange: DoctorEpisodeRange | null;
+  dimensionJumpThresholds?: DoctorDimensionJumpThresholds;
   result: DoctorRunResponse;
 }
 
@@ -223,10 +227,12 @@ function SummaryCard({
 
 function CheckCard({
   check,
+  dimensionJumpThresholds,
   expanded,
   onToggle,
 }: {
   check: DoctorCheckResult;
+  dimensionJumpThresholds: DoctorDimensionJumpThresholds;
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -265,9 +271,18 @@ function CheckCard({
             <path d="m7 5 5 5-5 5V5z" />
           </svg>
           <SeverityBadge severity={check.severity} />
-          <h3 className="truncate text-sm font-medium text-slate-200">
-            {check.name}
-          </h3>
+          <div className="min-w-0 flex-1 sm:flex sm:items-baseline sm:gap-2">
+            <h3 className="truncate text-sm font-medium text-slate-200">
+              {check.name}
+            </h3>
+            {check.name === "Dimension-Level Jump Detection" && (
+              <p className="mt-0.5 text-[10px] leading-4 text-slate-500 sm:mt-0">
+                Condition: ≥2 dimensions &gt;
+                {dimensionJumpThresholds.dimensionZThreshold}σ or 1 dimension
+                &gt;{dimensionJumpThresholds.extremeSingleDimensionZ}σ
+              </p>
+            )}
+          </div>
           <span className="ml-auto shrink-0 text-[11px] tabular text-slate-500">
             {issueCount > 0
               ? `${issueCount} issue${issueCount === 1 ? "" : "s"}`
@@ -334,6 +349,18 @@ export default function DoctorPanel({
   const [customEnd, setCustomEnd] = useState(
     String(cached?.episodeRange?.end ?? DEFAULT_CUSTOM_RANGE.end),
   );
+  const [dimensionZThreshold, setDimensionZThreshold] = useState(
+    String(
+      cached?.dimensionJumpThresholds?.dimensionZThreshold ??
+        DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS.dimensionZThreshold,
+    ),
+  );
+  const [extremeSingleDimensionZ, setExtremeSingleDimensionZ] = useState(
+    String(
+      cached?.dimensionJumpThresholds?.extremeSingleDimensionZ ??
+        DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS.extremeSingleDimensionZ,
+    ),
+  );
   const [result, setResult] = useState<DoctorRunResponse | null>(
     cached?.result ?? null,
   );
@@ -348,7 +375,11 @@ export default function DoctorPanel({
   const controllerRef = useRef<AbortController | null>(null);
 
   const run = useCallback(
-    async (scope: DoctorScope, refresh = false) => {
+    async (
+      scope: DoctorScope,
+      dimensionJumpThresholds: DoctorDimensionJumpThresholds,
+      refresh = false,
+    ) => {
       if (!encodedPath) {
         setError("Doctor is available for local datasets only.");
         return;
@@ -363,6 +394,7 @@ export default function DoctorPanel({
         const next = await runDatasetDoctor(encodedPath, {
           maxEpisodes: scope.maxEpisodes,
           episodeRange: scope.episodeRange,
+          dimensionJumpThresholds,
           signal: controller.signal,
           refresh,
           onProgress: (nextProgress) => {
@@ -371,7 +403,11 @@ export default function DoctorPanel({
         });
         if (controller.signal.aborted) return;
         setResult(next);
-        doctorRunCache.set(encodedPath, { ...scope, result: next });
+        doctorRunCache.set(encodedPath, {
+          ...scope,
+          dimensionJumpThresholds,
+          result: next,
+        });
         setExpanded(
           new Set(
             next.report.checks
@@ -404,6 +440,18 @@ export default function DoctorPanel({
         setCustomStart(String(previous.episodeRange.start));
         setCustomEnd(String(previous.episodeRange.end));
       }
+      setDimensionZThreshold(
+        String(
+          previous.dimensionJumpThresholds?.dimensionZThreshold ??
+            DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS.dimensionZThreshold,
+        ),
+      );
+      setExtremeSingleDimensionZ(
+        String(
+          previous.dimensionJumpThresholds?.extremeSingleDimensionZ ??
+            DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS.extremeSingleDimensionZ,
+        ),
+      );
       setResult(previous.result);
       setError(null);
       setExpanded(
@@ -417,6 +465,14 @@ export default function DoctorPanel({
       setScopeOption(scopeOptionFor(DEFAULT_MAX_EPISODES, null));
       setCustomStart(String(DEFAULT_CUSTOM_RANGE.start));
       setCustomEnd(String(DEFAULT_CUSTOM_RANGE.end));
+      setDimensionZThreshold(
+        String(DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS.dimensionZThreshold),
+      );
+      setExtremeSingleDimensionZ(
+        String(
+          DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS.extremeSingleDimensionZ,
+        ),
+      );
       setResult(null);
       setError(null);
       setProgress(INITIAL_PROGRESS);
@@ -434,6 +490,21 @@ export default function DoctorPanel({
     Number.isSafeInteger(parsedCustomStart) &&
     Number.isSafeInteger(parsedCustomEnd) &&
     parsedCustomEnd >= parsedCustomStart;
+  const parsedDimensionZThreshold = Number(dimensionZThreshold);
+  const parsedExtremeSingleDimensionZ = Number(extremeSingleDimensionZ);
+  const dimensionJumpThresholdsValid =
+    dimensionZThreshold.trim() !== "" &&
+    extremeSingleDimensionZ.trim() !== "" &&
+    Number.isFinite(parsedDimensionZThreshold) &&
+    Number.isFinite(parsedExtremeSingleDimensionZ) &&
+    parsedDimensionZThreshold > 0 &&
+    parsedExtremeSingleDimensionZ > 0 &&
+    parsedDimensionZThreshold <= MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD &&
+    parsedExtremeSingleDimensionZ <= MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD;
+  const selectedDimensionJumpThresholds: DoctorDimensionJumpThresholds = {
+    dimensionZThreshold: parsedDimensionZThreshold,
+    extremeSingleDimensionZ: parsedExtremeSingleDimensionZ,
+  };
   const selectedScope: DoctorScope = {
     maxEpisodes:
       scopeOption === "all" || scopeOption === "custom"
@@ -558,14 +629,68 @@ export default function DoctorPanel({
             disabled={
               running ||
               !encodedPath ||
+              !dimensionJumpThresholdsValid ||
               (scopeOption === "custom" && !customRangeValid)
             }
-            onClick={() => void run(selectedScope, true)}
+            onClick={() =>
+              void run(selectedScope, selectedDimensionJumpThresholds, true)
+            }
             className="inline-flex min-w-28 items-center justify-center gap-2 rounded-md bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {running && <Spinner />}
             {running ? "Diagnosing…" : result ? "Run again" : "Run Doctor"}
           </button>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-white/10 bg-[var(--surface-1)]/45 px-4 py-3">
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(22rem,auto)] md:items-center">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-slate-300">
+              Dimension-Level Jump Detection
+            </p>
+            <p className="mt-1 text-[11px] text-slate-500">
+              Triggers when at least 2 dimensions exceed the coordinated
+              threshold, or 1 dimension exceeds the single-dimension threshold;
+              reports triggered dimensions above 8σ.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="flex min-w-0 flex-col gap-1 text-[11px] text-slate-400">
+              <span>Coordinated z</span>
+              <input
+                type="number"
+                min="0.1"
+                max={MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD}
+                step="0.1"
+                value={dimensionZThreshold}
+                disabled={running}
+                onChange={(event) => setDimensionZThreshold(event.target.value)}
+                aria-invalid={!dimensionJumpThresholdsValid}
+                className="w-full rounded-md border border-white/10 bg-[var(--surface-1)] px-2 py-1.5 text-xs tabular text-slate-300 outline-none transition-colors focus:border-cyan-400/50 disabled:opacity-50 sm:w-24"
+              />
+            </label>
+            <label className="flex min-w-0 flex-col gap-1 text-[11px] text-slate-400">
+              <span>Single-dimension z</span>
+              <input
+                type="number"
+                min="0.1"
+                max={MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD}
+                step="0.1"
+                value={extremeSingleDimensionZ}
+                disabled={running}
+                onChange={(event) =>
+                  setExtremeSingleDimensionZ(event.target.value)
+                }
+                aria-invalid={!dimensionJumpThresholdsValid}
+                className="w-full rounded-md border border-white/10 bg-[var(--surface-1)] px-2 py-1.5 text-xs tabular text-slate-300 outline-none transition-colors focus:border-cyan-400/50 disabled:opacity-50 sm:w-24"
+              />
+            </label>
+            <p className="text-[11px] tabular text-cyan-300/80 sm:col-span-2">
+              ≥2 dims &gt;{dimensionZThreshold || "?"}σ or 1 dim &gt;
+              {extremeSingleDimensionZ || "?"}σ
+            </p>
+          </div>
         </div>
       </div>
 
@@ -576,6 +701,16 @@ export default function DoctorPanel({
         >
           Enter non-negative episode indices with the end greater than or equal
           to the start. Both endpoints are included.
+        </div>
+      )}
+
+      {!dimensionJumpThresholdsValid && !running && (
+        <div
+          className="rounded-md border border-red-400/20 bg-red-400/5 px-3 py-2 text-xs text-red-200/80"
+          role="alert"
+        >
+          Enter dimension-jump z-score thresholds greater than 0 and no more
+          than {MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD}.
         </div>
       )}
 
@@ -735,6 +870,10 @@ export default function DoctorPanel({
               <CheckCard
                 key={check.name}
                 check={check}
+                dimensionJumpThresholds={
+                  result.execution.dimension_jump_thresholds ??
+                  DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS
+                }
                 expanded={expanded.has(check.name)}
                 onToggle={() =>
                   setExpanded((current) => {
