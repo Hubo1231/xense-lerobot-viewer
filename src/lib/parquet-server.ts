@@ -41,7 +41,7 @@ const MAX_CACHED_FILES = 8;
 const MAX_EPISODE_CHUNKS = 64;
 const MAX_FILES_PER_CHUNK = 4096;
 
-interface ParquetHandle {
+export interface ParquetHandle {
   file: AsyncBuffer;
   metadata: FileMetaData;
   info: ParquetFileInfo;
@@ -234,6 +234,36 @@ export async function readParquetPage(
         : known;
 
   return { columns: resolved, rows: safeRows };
+}
+
+/**
+ * Read raw parquet values for server-side analysis.
+ *
+ * The table browser deliberately converts values to JSON-safe previews and
+ * truncates very large arrays. Doctor needs the original vectors for numeric
+ * checks, so it uses this internal server API instead. Nothing returned here
+ * is sent to the browser directly.
+ */
+export async function readParquetRowsRaw(
+  handle: ParquetHandle,
+  offset = 0,
+  limit = handle.info.numRows,
+  columns: string[] = [],
+): Promise<Record<string, unknown>[]> {
+  const start = Math.max(0, Math.floor(offset));
+  const end = Math.min(
+    handle.info.numRows,
+    start + Math.max(0, Math.floor(limit)),
+  );
+  if (end <= start) return [];
+
+  return (await parquetReadObjects({
+    file: handle.file,
+    metadata: handle.metadata,
+    columns: columns.length > 0 ? columns : undefined,
+    rowStart: start,
+    rowEnd: end,
+  })) as Record<string, unknown>[];
 }
 
 async function statFileOrNull(

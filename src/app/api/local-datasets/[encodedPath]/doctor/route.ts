@@ -1,0 +1,196 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import { NextRequest } from "next/server";
+import { runTypeScriptDoctor } from "@/lib/doctor/runner";
+import { resolveDatasetRoot } from "@/lib/local-dataset-paths";
+import {
+  DOCTOR_CHECK_IDS,
+  type DoctorCheckId,
+  type DoctorRunResponse,
+} from "@/types/doctor.types";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const DEFAULT_MAX_EPISODES = 25;
+const MAX_EPISODES_LIMIT = 500;
+const DOCTOR_TIMEOUT_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const MAX_CACHE_ENTRIES = 8;
+const CHECK_IDS = new Set<string>(DOCTOR_CHECK_IDS);
+
+interface DoctorRequestBody {
+  maxEpisodes?: unknown;
+  checks?: unknown;
+}
+
+interface CachedResult {
+  expiresAt: number;
+  result: DoctorRunResponse;
+}
+
+const cache = new Map<string, CachedResult>();
+const inFlight = new Map<string, Promise<DoctorRunResponse>>();
+
+function parseOptions(
+  body: DoctorRequestBody,
+):
+  | { maxEpisodes: number | null; checks: DoctorCheckId[] | null }
+  | { error: string } {
+  let maxEpisodes: number | null = DEFAULT_MAX_EPISODES;
+  if (body.maxEpisodes === null) maxEpisodes = null;
+  else if (body.maxEpisodes !== undefined) {
+    if (
+      typeof body.maxEpisodes !== "number" ||
+      !Number.isInteger(body.maxEpisodes) ||
+      body.maxEpisodes < 1 ||
+      body.maxEpisodes > MAX_EPISODES_LIMIT
+    ) {
+      return {
+        error: `maxEpisodes must be null or an integer from 1 to ${MAX_EPISODES_LIMIT}.`,
+      };
+    }
+    maxEpisodes = body.maxEpisodes;
+  }
+
+  let checks: DoctorCheckId[] | null = null;
+  if (body.checks !== undefined) {
+    if (!Array.isArray(body.checks) || body.checks.length === 0) {
+      return { error: "checks must be a non-empty array when provided." };
+    }
+    const unique = [...new Set(body.checks)];
+    if (
+      unique.some((check) => typeof check !== "string" || !CHECK_IDS.has(check))
+    ) {
+      return { error: "checks contains an unknown Doctor check id." };
+    }
+    checks = unique as DoctorCheckId[];
+  }
+  return { maxEpisodes, checks };
+}
+
+async function validateDatasetRoot(encodedPath: string): Promise<{
+  root: string;
+  signature: string;
+} | null> {
+  const root = resolveDatasetRoot(encodedPath);
+  if (!root) return null;
+  try {
+    const [rootStat, infoStat] = await Promise.all([
+      fs.stat(root),
+      fs.stat(path.join(root, "meta", "info.json")),
+    ]);
+    if (!rootStat.isDirectory() || !infoStat.isFile()) return null;
+    return {
+      root,
+      signature: `${infoStat.size}:${infoStat.mtimeMs}`,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function abortError(): DOMException {
+  return new DOMException("Doctor run aborted", "AbortError");
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function remember(key: string, result: DoctorRunResponse): void {
+  cache.delete(key);
+  cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, result });
+  while (cache.size > MAX_CACHE_ENTRIES) {
+    const oldest = cache.keys().next();
+    if (oldest.done) break;
+    cache.delete(oldest.value);
+  }
+}
+
+export async function POST(
+  request: NextRequest,
+  context: { params: Promise<{ encodedPath: string }> },
+): Promise<Response> {
+  const { encodedPath } = await context.params;
+  const dataset = await validateDatasetRoot(encodedPath);
+  if (!dataset)
+    return Response.json({ error: "Dataset not found." }, { status: 404 });
+
+  let body: DoctorRequestBody;
+  try {
+    const raw = (await request.json()) as unknown;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return Response.json(
+        { error: "Request body must be a JSON object." },
+        { status: 400 },
+      );
+    }
+    body = raw as DoctorRequestBody;
+  } catch {
+    return Response.json(
+      { error: "Request body must be JSON." },
+      { status: 400 },
+    );
+  }
+  const options = parseOptions(body);
+  if ("error" in options)
+    return Response.json({ error: options.error }, { status: 400 });
+
+  const key = `${dataset.root}:${dataset.signature}:${options.maxEpisodes ?? "all"}:${(options.checks ?? DOCTOR_CHECK_IDS).join(",")}`;
+  const cached = cache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    cache.delete(key);
+    cache.set(key, cached);
+    return Response.json({
+      ...cached.result,
+      execution: { ...cached.result.execution, cache_hit: true },
+    } satisfies DoctorRunResponse);
+  }
+  if (cached) cache.delete(key);
+
+  const controller = new AbortController();
+  const onRequestAbort = () => controller.abort(abortError());
+  request.signal.addEventListener("abort", onRequestAbort, { once: true });
+  const timeout = setTimeout(
+    () =>
+      controller.abort(new DOMException("Doctor timed out", "TimeoutError")),
+    DOCTOR_TIMEOUT_MS,
+  );
+  timeout.unref();
+
+  try {
+    let pending = inFlight.get(key);
+    if (!pending) {
+      pending = runTypeScriptDoctor(dataset.root, {
+        maxEpisodes: options.maxEpisodes,
+        checks: options.checks,
+        signal: controller.signal,
+      });
+      inFlight.set(key, pending);
+      pending.finally(() => inFlight.delete(key)).catch(() => undefined);
+    }
+    const result = await pending;
+    remember(key, result);
+    return Response.json(result, { headers: { "cache-control": "no-store" } });
+  } catch (error) {
+    if (request.signal.aborted) return new Response(null, { status: 499 });
+    if (
+      controller.signal.reason instanceof DOMException &&
+      controller.signal.reason.name === "TimeoutError"
+    ) {
+      return Response.json(
+        { error: "Doctor timed out after 5 minutes." },
+        { status: 504 },
+      );
+    }
+    if (isAbortError(error)) return new Response(null, { status: 499 });
+    return Response.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      { status: 500 },
+    );
+  } finally {
+    clearTimeout(timeout);
+    request.signal.removeEventListener("abort", onRequestAbort);
+  }
+}

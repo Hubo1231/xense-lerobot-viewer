@@ -65,6 +65,7 @@ The browser URL for episodes is `/_local/<base64url-encoded-relative-path>/episo
 - `src/app/api/local-datasets/[encodedPath]/subtasks/export/route.ts` — `POST` spawns `scripts/export_subtasks.py` to compile the sidecar into lerobot-native `subtask_index` + `meta/subtasks.parquet`
 - `src/app/api/local-datasets/[encodedPath]/parquet/route.ts` — `GET` lists every `.parquet` in the dataset (stat only); `?episode=N` also resolves that episode's data file + row range
 - `src/app/api/local-datasets/[encodedPath]/parquet/read/route.ts` — `GET` reads one parquet server-side: `?meta=1` for schema only, otherwise `?offset=&limit=&col=…` for a page of rows
+- `src/app/api/local-datasets/[encodedPath]/doctor/route.ts` — `POST` runs the read-only native TypeScript Doctor; no Python subprocess or external service
 
 Path resolution for all of these goes through `src/lib/local-dataset-paths.ts` (`resolveDatasetRoot` / `resolveInsideDataset` / `statDatasetFile`) — the traversal check lives there, not in each route. `resolveInsideDataset` is pure and catches only **lexical** escapes (`..`, absolute segments); `statDatasetFile` additionally `realpath`s both the dataset directory and the target, so a **symlink** planted inside a dataset can't read outside it. A dataset reached through a symlinked root still works — but a deliberately out-of-tree `videos/` symlink is refused, by design.
 
@@ -148,6 +149,16 @@ The **Parquet** tab (`src/components/parquet-table-panel.tsx`, last in the tab r
 - **Episode shortcut** — `locateEpisodeRows` dispatches on `codebase_version`. For **v3.0** it walks `meta/episodes/chunk-*/file-*.parquet` (all chunks, not just chunk-000) for the row whose `episode_index` matches, and returns `data/chunk_index` + `data/file_index` + `dataset_from_index`/`dataset_to_index`. For **v2.x** there is no such tree: the episode owns a whole parquet whose path is computed by the pure `buildV2EpisodeDataPath(info, episodeIndex)` from `info.data_path` + `chunks_size`, and the row range is the whole file (`0`–`num_rows`, read from the footer). Null when the episode's file doesn't exist. The tab opens on the current episode's own rows; the header button jumps back there.
 - Read-only. Nothing here writes to a parquet — that stays with `scripts/export_subtasks.py`.
 
+### Doctor (native TypeScript diagnostics)
+
+The **Doctor** tab (`src/components/doctor-panel.tsx`, immediately after Action Insights) runs 11 dataset checks locally and renders the structured PASS/WARN/FAIL report. It is a TypeScript port of the read-only diagnostic concepts from `lerobot-doctor`; do not add back a Python bridge, `PYTHON_BIN`, PyAV/OpenCV, or a remote Space iframe.
+
+- `POST /api/local-datasets/[encodedPath]/doctor` validates scope/check IDs, applies a 5-minute abort timeout, deduplicates identical in-flight work, and keeps a bounded 5-minute result cache.
+- `src/lib/doctor/loader.ts` reads `info.json`, JSONL metadata, and raw Parquet values through the shared Node-side `hyparquet` handle. v2 computes per-episode paths; v3 uses episode metadata shard and global-index row ranges. The default is the first 25 episodes; directory inventory checks remain dataset-wide.
+- `src/lib/doctor/checks/` holds the 11 checks. MP4 files are structurally parsed in TypeScript (`ftyp`/`moov`/`mdat`, video track, dimensions, timing/sample count); this intentionally avoids native codecs and does not claim to decode a frame.
+- The report schema lives in `src/types/doctor.types.ts`. Messages that explicitly name episode IDs feed `FlaggedEpisodesProvider` through its pure extraction helpers.
+- Read-only: Doctor never runs fix/trim commands and never writes dataset files.
+
 ## Key files
 
 | File                                                              | Purpose                                                                                                                                                            |
@@ -172,6 +183,8 @@ The **Parquet** tab (`src/components/parquet-table-panel.tsx`, last in the tab r
 | `src/utils/subtasksClient.ts`                                     | Client for the `…/[encodedPath]/subtasks` + `/subtasks/export` routes                                                                                              |
 | `src/lib/local-dataset-paths.ts`                                  | Shared server path resolution + traversal guard for every per-dataset route                                                                                        |
 | `src/lib/parquet-server.ts`                                       | Node-side hyparquet reader: LRU file handles, schema→type strings, `readParquetPage`, `locateEpisodeRows`                                                          |
+| `src/lib/doctor/`                                                 | Native TypeScript Doctor loader, math helpers, MP4 structural probe, 11 checks, and report runner                                                                  |
+| `src/components/doctor-panel.tsx`                                 | Doctor scope controls, report filters/download, and affected-episode flagging                                                                                      |
 | `src/components/parquet-table-panel.tsx`                          | Parquet tab: file picker, column picker, paged sticky table, cell expansion, CSV export                                                                            |
 | `src/utils/parquetBrowser.ts`                                     | Pure helpers: `toJsonSafe`, `describeCell`, `defaultColumnSelection`, `rowsToCsv`, file classify/sort                                                              |
 | `src/utils/parquetBrowserClient.ts`                               | Client for the `…/[encodedPath]/parquet` + `/parquet/read` routes                                                                                                  |
