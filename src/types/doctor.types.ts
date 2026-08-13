@@ -44,6 +44,7 @@ export interface DoctorReport {
 export interface DoctorExecution {
   duration_ms: number;
   requested_max_episodes: number | null;
+  requested_episode_range: DoctorEpisodeRange | null;
   loaded_episode_count: number;
   loaded_episode_indices: number[];
   engine: "typescript";
@@ -54,6 +55,13 @@ export interface DoctorRunResponse {
   ok: true;
   report: DoctorReport;
   execution: DoctorExecution;
+}
+
+export interface DoctorEpisodeRange {
+  /** Inclusive episode_index lower bound. */
+  start: number;
+  /** Inclusive episode_index upper bound. */
+  end: number;
 }
 
 export type DoctorProgressPhase = "loading" | "checks" | "complete";

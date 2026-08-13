@@ -3,6 +3,7 @@ import {
   DOCTOR_CHECK_IDS,
   type DoctorCheckId,
   type DoctorCheckResult,
+  type DoctorEpisodeRange,
   type DoctorProgress,
   type DoctorReport,
   type DoctorRunResponse,
@@ -26,6 +27,7 @@ export const TYPESCRIPT_DOCTOR_VERSION = "1.0.0-ts";
 
 export interface RunDoctorOptions {
   maxEpisodes: number | null;
+  episodeRange?: DoctorEpisodeRange | null;
   checks?: DoctorCheckId[] | null;
   signal?: AbortSignal;
   onProgress?: (progress: DoctorProgress) => void;
@@ -112,6 +114,7 @@ export async function runTypeScriptDoctor(
   });
   const dataset = await loadDoctorDataset(datasetRoot, {
     maxEpisodes: options.maxEpisodes,
+    episodeRange: options.episodeRange,
     signal: options.signal,
     onProgress: ({ fraction, message }) =>
       reportProgress(options, {
@@ -173,6 +176,7 @@ export async function runTypeScriptDoctor(
     execution: {
       duration_ms: Math.max(0, Math.round(performance.now() - startedAt)),
       requested_max_episodes: options.maxEpisodes,
+      requested_episode_range: options.episodeRange ?? null,
       loaded_episode_count: dataset.episodesData.length,
       loaded_episode_indices: dataset.episodesData.map(
         (episode) => episode.episodeIndex,

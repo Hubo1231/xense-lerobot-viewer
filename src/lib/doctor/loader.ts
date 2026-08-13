@@ -7,6 +7,7 @@ import {
   readParquetRowsRaw,
 } from "@/lib/parquet-server";
 import { buildV3DataPath } from "@/utils/stringFormatting";
+import type { DoctorEpisodeRange } from "@/types/doctor.types";
 import {
   isRecord,
   numberValue,
@@ -25,6 +26,7 @@ const MAX_JSON_BYTES = 50 * 1024 * 1024;
 
 export interface LoadDoctorDatasetOptions {
   maxEpisodes: number | null;
+  episodeRange?: DoctorEpisodeRange | null;
   signal?: AbortSignal;
   onProgress?: (progress: DoctorLoadProgress) => void;
 }
@@ -352,11 +354,27 @@ function episodeMetaFromRow(
   };
 }
 
+export function selectDoctorEpisodeMeta(
+  episodes: DoctorEpisodeMeta[],
+  maxEpisodes: number | null,
+  episodeRange: DoctorEpisodeRange | null,
+): DoctorEpisodeMeta[] {
+  if (episodeRange) {
+    return episodes.filter(
+      (episode) =>
+        episode.episodeIndex >= episodeRange.start &&
+        episode.episodeIndex <= episodeRange.end,
+    );
+  }
+  return maxEpisodes === null ? episodes : episodes.slice(0, maxEpisodes);
+}
+
 async function loadEpisodeMeta(
   root: string,
   info: DoctorDatasetInfo,
   formatVersion: "v2" | "v3" | null,
   maxEpisodes: number | null,
+  episodeRange: DoctorEpisodeRange | null,
   signal?: AbortSignal,
 ): Promise<{
   all: DoctorEpisodeMeta[];
@@ -409,7 +427,7 @@ async function loadEpisodeMeta(
     all,
     // Keep the complete lightweight index for dataset-wide checks, while
     // limiting frame-data loading to the requested episode scope.
-    selected: maxEpisodes === null ? all : all.slice(0, maxEpisodes),
+    selected: selectDoctorEpisodeMeta(all, maxEpisodes, episodeRange),
     total: total || all.length,
     warnings,
   };
@@ -636,6 +654,7 @@ function hasAllEpisodeData(
 async function loadEpisodesByScanning(
   root: string,
   maxEpisodes: number | null,
+  episodeRange: DoctorEpisodeRange | null,
   signal?: AbortSignal,
   onFileProgress?: (completed: number, total: number, message: string) => void,
 ): Promise<{ episodes: DoctorEpisodeData[]; warnings: string[] }> {
@@ -663,6 +682,13 @@ async function loadEpisodesByScanning(
       if (episodeIndex === null) continue;
       const index = Math.trunc(episodeIndex);
       if (
+        episodeRange &&
+        (index < episodeRange.start || index > episodeRange.end)
+      ) {
+        continue;
+      }
+      if (
+        !episodeRange &&
         !grouped.has(index) &&
         maxEpisodes !== null &&
         grouped.size >= maxEpisodes
@@ -676,12 +702,17 @@ async function loadEpisodesByScanning(
       parquetFiles.length,
       `Scanned data parquet ${fileIndex + 1}/${parquetFiles.length}`,
     );
-    if (maxEpisodes !== null && grouped.size >= maxEpisodes) break;
+    if (!episodeRange && maxEpisodes !== null && grouped.size >= maxEpisodes) {
+      break;
+    }
   }
   const sorted = [...grouped.values()].sort(
     (left, right) => left.episodeIndex - right.episodeIndex,
   );
-  const selected = maxEpisodes === null ? sorted : sorted.slice(0, maxEpisodes);
+  const selected =
+    episodeRange || maxEpisodes === null
+      ? sorted
+      : sorted.slice(0, maxEpisodes);
   return {
     episodes: selected,
     warnings,
@@ -794,6 +825,7 @@ export async function loadDoctorDataset(
       statsError: null,
       inventory,
       maxEpisodesApplied: options.maxEpisodes,
+      episodeRangeApplied: options.episodeRange ?? null,
       loadWarnings: [],
     };
   }
@@ -804,6 +836,7 @@ export async function loadDoctorDataset(
       info,
       info.formatVersion,
       options.maxEpisodes,
+      options.episodeRange ?? null,
       options.signal,
     ),
     loadTasks(root),
@@ -836,6 +869,7 @@ export async function loadDoctorDataset(
     const scannedResult = await loadEpisodesByScanning(
       root,
       options.maxEpisodes,
+      options.episodeRange ?? null,
       options.signal,
       (completed, total, message) =>
         reportLoadProgress(
@@ -869,10 +903,7 @@ export async function loadDoctorDataset(
     info,
     infoError,
     episodesMeta: metaResult.all,
-    sampledEpisodesMeta:
-      options.maxEpisodes === null
-        ? metaResult.all
-        : metaResult.all.slice(0, options.maxEpisodes),
+    sampledEpisodesMeta: metaResult.selected,
     totalEpisodeMetaEntries: metaResult.total,
     episodesData: dataResult.episodes,
     tasks: tasksResult.tasks,
@@ -881,6 +912,7 @@ export async function loadDoctorDataset(
     statsError: statsResult.error,
     inventory,
     maxEpisodesApplied: options.maxEpisodes,
+    episodeRangeApplied: options.episodeRange ?? null,
     loadWarnings: [...metaResult.warnings, ...dataResult.warnings],
   };
 }

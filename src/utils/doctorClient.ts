@@ -1,5 +1,6 @@
 import type {
   DoctorCheckId,
+  DoctorEpisodeRange,
   DoctorProgress,
   DoctorRunResponse,
   DoctorStreamEvent,
@@ -7,6 +8,7 @@ import type {
 
 export interface RunDoctorOptions {
   maxEpisodes: number | null;
+  episodeRange?: DoctorEpisodeRange | null;
   checks?: DoctorCheckId[];
   signal?: AbortSignal;
   onProgress?: (progress: DoctorProgress) => void;
@@ -47,6 +49,7 @@ export async function runDatasetDoctor(
       signal: options.signal,
       body: JSON.stringify({
         maxEpisodes: options.maxEpisodes,
+        episodeRange: options.episodeRange,
         checks: options.checks,
       }),
     },

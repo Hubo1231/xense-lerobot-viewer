@@ -68,7 +68,7 @@ export async function checkVideos(dataset: LoadedDoctorDataset) {
       { episodes: number[]; expectedFrames: number }
     >();
     const missing: number[] = [];
-    for (const metadata of dataset.episodesMeta) {
+    for (const metadata of dataset.sampledEpisodesMeta) {
       const relPath = resolveVideoPath(
         dataset,
         featureName,
@@ -87,14 +87,26 @@ export async function checkVideos(dataset: LoadedDoctorDataset) {
       }
       const group = groups.get(relPath) ?? { episodes: [], expectedFrames: 0 };
       group.episodes.push(metadata.episodeIndex);
-      group.expectedFrames += metadata.length;
       groups.set(relPath, group);
+    }
+    // A v3 physical video file can contain episodes outside the selected
+    // Doctor range. Probe only files touched by the selection, but compare the
+    // container frame count with every episode stored in that physical file.
+    for (const metadata of dataset.episodesMeta) {
+      const relPath = resolveVideoPath(
+        dataset,
+        featureName,
+        metadata.episodeIndex,
+        metadata.raw,
+      );
+      const group = relPath ? groups.get(relPath) : undefined;
+      if (group) group.expectedFrames += metadata.length;
     }
     if (missing.length > 0) {
       result.fail(
         `${featureName}: ${missing.length} video file(s) missing (episodes [${missing.slice(0, 10).join(", ")}${missing.length > 10 ? ", ..." : ""}])`,
       );
-    } else if (dataset.episodesMeta.length > 0) {
+    } else if (dataset.sampledEpisodesMeta.length > 0) {
       result.pass(`${featureName}: All video files present`);
     }
 

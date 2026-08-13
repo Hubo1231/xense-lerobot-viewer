@@ -1,5 +1,6 @@
 import type {
   DoctorCheckResult,
+  DoctorEpisodeRange,
   DoctorMessage,
   DoctorSeverity,
 } from "@/types/doctor.types";
@@ -71,6 +72,7 @@ export interface LoadedDoctorDataset {
   statsError: string | null;
   inventory: DoctorInventory;
   maxEpisodesApplied: number | null;
+  episodeRangeApplied: DoctorEpisodeRange | null;
   loadWarnings: string[];
 }
 

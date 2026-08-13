@@ -153,7 +153,8 @@ export function checkMetadata(dataset: LoadedDoctorDataset) {
     }
   }
 
-  const partial = dataset.maxEpisodesApplied !== null;
+  const partial =
+    dataset.maxEpisodesApplied !== null || dataset.episodeRangeApplied !== null;
   if (
     !partial &&
     dataset.episodesData.length > 0 &&
@@ -174,8 +175,11 @@ export function checkMetadata(dataset: LoadedDoctorDataset) {
   }
   if (dataset.totalEpisodeMetaEntries > 0) {
     if (partial) {
+      const scope = dataset.episodeRangeApplied
+        ? `episode range ${dataset.episodeRangeApplied.start}-${dataset.episodeRangeApplied.end}`
+        : `maxEpisodes=${dataset.maxEpisodesApplied}`;
       result.pass(
-        `Skipped total_episodes check (loaded partial subset via maxEpisodes=${dataset.maxEpisodesApplied})`,
+        `Skipped total_episodes check (loaded partial subset via ${scope})`,
       );
     } else if (
       info.totalEpisodes !== null &&
@@ -316,7 +320,9 @@ export function checkTemporal(dataset: LoadedDoctorDataset) {
   }
   if (firstGlobalIndex !== null && globalIndexMismatch) {
     result.warn(
-      dataset.maxEpisodesApplied === null || firstGlobalIndex === 0
+      (dataset.maxEpisodesApplied === null &&
+        dataset.episodeRangeApplied === null) ||
+        firstGlobalIndex === 0
         ? "Global index column is not sequential"
         : `Global index column is not sequential within sampled episodes (sample begins at ${firstGlobalIndex})`,
     );

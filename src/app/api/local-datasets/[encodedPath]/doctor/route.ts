@@ -6,6 +6,7 @@ import { resolveDatasetRoot } from "@/lib/local-dataset-paths";
 import {
   DOCTOR_CHECK_IDS,
   type DoctorCheckId,
+  type DoctorEpisodeRange,
   type DoctorProgress,
   type DoctorRunResponse,
   type DoctorStreamEvent,
@@ -23,6 +24,7 @@ const CHECK_IDS = new Set<string>(DOCTOR_CHECK_IDS);
 
 interface DoctorRequestBody {
   maxEpisodes?: unknown;
+  episodeRange?: unknown;
   checks?: unknown;
 }
 
@@ -34,10 +36,12 @@ interface CachedResult {
 const cache = new Map<string, CachedResult>();
 const inFlight = new Map<string, Promise<DoctorRunResponse>>();
 
-function parseOptions(
-  body: DoctorRequestBody,
-):
-  | { maxEpisodes: number | null; checks: DoctorCheckId[] | null }
+function parseOptions(body: DoctorRequestBody):
+  | {
+      maxEpisodes: number | null;
+      episodeRange: DoctorEpisodeRange | null;
+      checks: DoctorCheckId[] | null;
+    }
   | { error: string } {
   let maxEpisodes: number | null = DEFAULT_MAX_EPISODES;
   if (body.maxEpisodes === null) maxEpisodes = null;
@@ -55,6 +59,37 @@ function parseOptions(
     maxEpisodes = body.maxEpisodes;
   }
 
+  let episodeRange: DoctorEpisodeRange | null = null;
+  if (body.episodeRange !== undefined && body.episodeRange !== null) {
+    if (
+      typeof body.episodeRange !== "object" ||
+      Array.isArray(body.episodeRange) ||
+      !("start" in body.episodeRange) ||
+      !("end" in body.episodeRange)
+    ) {
+      return {
+        error: "episodeRange must contain integer start and end values.",
+      };
+    }
+    const start = body.episodeRange.start;
+    const end = body.episodeRange.end;
+    if (
+      typeof start !== "number" ||
+      typeof end !== "number" ||
+      !Number.isSafeInteger(start) ||
+      !Number.isSafeInteger(end) ||
+      start < 0 ||
+      end < start
+    ) {
+      return {
+        error:
+          "episodeRange must use non-negative inclusive indices with start <= end.",
+      };
+    }
+    episodeRange = { start, end };
+    maxEpisodes = null;
+  }
+
   let checks: DoctorCheckId[] | null = null;
   if (body.checks !== undefined) {
     if (!Array.isArray(body.checks) || body.checks.length === 0) {
@@ -68,7 +103,7 @@ function parseOptions(
     }
     checks = unique as DoctorCheckId[];
   }
-  return { maxEpisodes, checks };
+  return { maxEpisodes, episodeRange, checks };
 }
 
 async function validateDatasetRoot(encodedPath: string): Promise<{
@@ -151,7 +186,11 @@ function streamCachedResult(result: DoctorRunResponse): Response {
 function streamDoctorRun(
   datasetRoot: string,
   key: string,
-  options: { maxEpisodes: number | null; checks: DoctorCheckId[] | null },
+  options: {
+    maxEpisodes: number | null;
+    episodeRange: DoctorEpisodeRange | null;
+    checks: DoctorCheckId[] | null;
+  },
   controller: AbortController,
   cleanup: () => void,
 ): Response {
@@ -176,6 +215,7 @@ function streamDoctorRun(
 
         void runTypeScriptDoctor(datasetRoot, {
           maxEpisodes: options.maxEpisodes,
+          episodeRange: options.episodeRange,
           checks: options.checks,
           signal: controller.signal,
           onProgress: (progress: DoctorProgress) =>
@@ -248,7 +288,10 @@ export async function POST(
   if ("error" in options)
     return Response.json({ error: options.error }, { status: 400 });
 
-  const key = `${dataset.root}:${dataset.signature}:${options.maxEpisodes ?? "all"}:${(options.checks ?? DOCTOR_CHECK_IDS).join(",")}`;
+  const scopeKey = options.episodeRange
+    ? `range-${options.episodeRange.start}-${options.episodeRange.end}`
+    : (options.maxEpisodes ?? "all");
+  const key = `${dataset.root}:${dataset.signature}:${scopeKey}:${(options.checks ?? DOCTOR_CHECK_IDS).join(",")}`;
   const wantsStream = request.nextUrl.searchParams.get("stream") === "1";
   const forceRefresh = request.nextUrl.searchParams.get("refresh") === "1";
   const cached = cache.get(key);
@@ -285,6 +328,7 @@ export async function POST(
     if (!pending) {
       pending = runTypeScriptDoctor(dataset.root, {
         maxEpisodes: options.maxEpisodes,
+        episodeRange: options.episodeRange,
         checks: options.checks,
         signal: controller.signal,
       });

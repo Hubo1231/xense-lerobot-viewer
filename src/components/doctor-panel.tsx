@@ -6,6 +6,7 @@ import {
   extractAffectedDoctorEpisodeIds,
   extractDoctorEpisodeIdsFromMessage,
   type DoctorCheckResult,
+  type DoctorEpisodeRange,
   type DoctorProgress,
   type DoctorReport,
   type DoctorRunResponse,
@@ -13,18 +14,37 @@ import {
 } from "@/types/doctor.types";
 import { runDatasetDoctor } from "@/utils/doctorClient";
 
-const DEFAULT_MAX_EPISODES = 25;
-const SAMPLE_OPTIONS: Array<{ value: number | null; label: string }> = [
-  { value: 10, label: "First 10 episodes" },
-  { value: 25, label: "First 25 episodes" },
-  { value: 50, label: "First 50 episodes" },
-  { value: 100, label: "First 100 episodes" },
-  { value: null, label: "Full dataset" },
-];
+const DEFAULT_MAX_EPISODES: number | null = null;
+const DEFAULT_CUSTOM_RANGE: DoctorEpisodeRange = { start: 10, end: 100 };
+const SAMPLE_OPTIONS = [
+  { value: "10", label: "First 10 episodes" },
+  { value: "25", label: "First 25 episodes" },
+  { value: "50", label: "First 50 episodes" },
+  { value: "100", label: "First 100 episodes" },
+  { value: "all", label: "Full dataset" },
+  { value: "custom", label: "Custom episode range" },
+] as const;
+
+type DoctorScopeOption = (typeof SAMPLE_OPTIONS)[number]["value"];
+
+interface DoctorScope {
+  maxEpisodes: number | null;
+  episodeRange: DoctorEpisodeRange | null;
+}
 
 interface CachedDoctorRun {
   maxEpisodes: number | null;
+  episodeRange: DoctorEpisodeRange | null;
   result: DoctorRunResponse;
+}
+
+function scopeOptionFor(
+  maxEpisodes: number | null,
+  episodeRange: DoctorEpisodeRange | null,
+): DoctorScopeOption {
+  if (episodeRange) return "custom";
+  if (maxEpisodes === null) return "all";
+  return String(maxEpisodes) as DoctorScopeOption;
 }
 
 // Conditional tab content unmounts when the user switches tabs. Keep the last
@@ -302,8 +322,17 @@ export default function DoctorPanel({
 }: DoctorPanelProps) {
   const { addMany } = useFlaggedEpisodes();
   const cached = encodedPath ? doctorRunCache.get(encodedPath) : undefined;
-  const [maxEpisodes, setMaxEpisodes] = useState<number | null>(
-    cached?.maxEpisodes ?? DEFAULT_MAX_EPISODES,
+  const [scopeOption, setScopeOption] = useState<DoctorScopeOption>(
+    scopeOptionFor(
+      cached ? cached.maxEpisodes : DEFAULT_MAX_EPISODES,
+      cached?.episodeRange ?? null,
+    ),
+  );
+  const [customStart, setCustomStart] = useState(
+    String(cached?.episodeRange?.start ?? DEFAULT_CUSTOM_RANGE.start),
+  );
+  const [customEnd, setCustomEnd] = useState(
+    String(cached?.episodeRange?.end ?? DEFAULT_CUSTOM_RANGE.end),
   );
   const [result, setResult] = useState<DoctorRunResponse | null>(
     cached?.result ?? null,
@@ -319,7 +348,7 @@ export default function DoctorPanel({
   const controllerRef = useRef<AbortController | null>(null);
 
   const run = useCallback(
-    async (limit: number | null, refresh = false) => {
+    async (scope: DoctorScope, refresh = false) => {
       if (!encodedPath) {
         setError("Doctor is available for local datasets only.");
         return;
@@ -332,7 +361,8 @@ export default function DoctorPanel({
       setError(null);
       try {
         const next = await runDatasetDoctor(encodedPath, {
-          maxEpisodes: limit,
+          maxEpisodes: scope.maxEpisodes,
+          episodeRange: scope.episodeRange,
           signal: controller.signal,
           refresh,
           onProgress: (nextProgress) => {
@@ -341,7 +371,7 @@ export default function DoctorPanel({
         });
         if (controller.signal.aborted) return;
         setResult(next);
-        doctorRunCache.set(encodedPath, { maxEpisodes: limit, result: next });
+        doctorRunCache.set(encodedPath, { ...scope, result: next });
         setExpanded(
           new Set(
             next.report.checks
@@ -367,7 +397,13 @@ export default function DoctorPanel({
   useEffect(() => {
     const previous = encodedPath ? doctorRunCache.get(encodedPath) : undefined;
     if (previous) {
-      setMaxEpisodes(previous.maxEpisodes);
+      setScopeOption(
+        scopeOptionFor(previous.maxEpisodes, previous.episodeRange),
+      );
+      if (previous.episodeRange) {
+        setCustomStart(String(previous.episodeRange.start));
+        setCustomEnd(String(previous.episodeRange.end));
+      }
       setResult(previous.result);
       setError(null);
       setExpanded(
@@ -378,7 +414,9 @@ export default function DoctorPanel({
         ),
       );
     } else {
-      setMaxEpisodes(DEFAULT_MAX_EPISODES);
+      setScopeOption(scopeOptionFor(DEFAULT_MAX_EPISODES, null));
+      setCustomStart(String(DEFAULT_CUSTOM_RANGE.start));
+      setCustomEnd(String(DEFAULT_CUSTOM_RANGE.end));
       setResult(null);
       setError(null);
       setProgress(INITIAL_PROGRESS);
@@ -388,6 +426,24 @@ export default function DoctorPanel({
   }, [encodedPath]);
 
   const report = result?.report ?? null;
+  const parsedCustomStart = Number(customStart);
+  const parsedCustomEnd = Number(customEnd);
+  const customRangeValid =
+    /^\d+$/.test(customStart) &&
+    /^\d+$/.test(customEnd) &&
+    Number.isSafeInteger(parsedCustomStart) &&
+    Number.isSafeInteger(parsedCustomEnd) &&
+    parsedCustomEnd >= parsedCustomStart;
+  const selectedScope: DoctorScope = {
+    maxEpisodes:
+      scopeOption === "all" || scopeOption === "custom"
+        ? null
+        : Number(scopeOption),
+    episodeRange:
+      scopeOption === "custom" && customRangeValid
+        ? { start: parsedCustomStart, end: parsedCustomEnd }
+        : null,
+  };
   const affectedEpisodeIds = useMemo(
     () => (report ? extractAffectedDoctorEpisodeIds(report) : []),
     [report],
@@ -433,25 +489,56 @@ export default function DoctorPanel({
           </p>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <div className="flex basis-full flex-wrap items-center justify-end gap-2">
+          {scopeOption === "custom" && (
+            <div className="flex items-center gap-1.5">
+              <label className="sr-only" htmlFor="doctor-range-start">
+                Start episode index
+              </label>
+              <input
+                id="doctor-range-start"
+                type="number"
+                min={0}
+                step={1}
+                value={customStart}
+                disabled={running}
+                onChange={(event) => setCustomStart(event.target.value)}
+                aria-invalid={!customRangeValid}
+                className="w-20 rounded-md border border-white/10 bg-[var(--surface-1)] px-2 py-2 text-xs tabular text-slate-300 outline-none transition-colors focus:border-cyan-400/50 disabled:opacity-50"
+                placeholder="Start"
+              />
+              <span className="text-xs text-slate-500">to</span>
+              <label className="sr-only" htmlFor="doctor-range-end">
+                End episode index
+              </label>
+              <input
+                id="doctor-range-end"
+                type="number"
+                min={0}
+                step={1}
+                value={customEnd}
+                disabled={running}
+                onChange={(event) => setCustomEnd(event.target.value)}
+                aria-invalid={!customRangeValid}
+                className="w-20 rounded-md border border-white/10 bg-[var(--surface-1)] px-2 py-2 text-xs tabular text-slate-300 outline-none transition-colors focus:border-cyan-400/50 disabled:opacity-50"
+                placeholder="End"
+              />
+            </div>
+          )}
           <label className="sr-only" htmlFor="doctor-scope">
             Diagnostic scope
           </label>
           <select
             id="doctor-scope"
-            value={maxEpisodes ?? "all"}
+            value={scopeOption}
             disabled={running}
             onChange={(event) =>
-              setMaxEpisodes(
-                event.target.value === "all"
-                  ? null
-                  : Number(event.target.value),
-              )
+              setScopeOption(event.target.value as DoctorScopeOption)
             }
             className="rounded-md border border-white/10 bg-[var(--surface-1)] px-3 py-2 text-xs text-slate-300 outline-none transition-colors focus:border-cyan-400/50 disabled:opacity-50"
           >
             {SAMPLE_OPTIONS.map((option) => (
-              <option key={option.value ?? "all"} value={option.value ?? "all"}>
+              <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
@@ -467,8 +554,12 @@ export default function DoctorPanel({
           )}
           <button
             type="button"
-            disabled={running || !encodedPath}
-            onClick={() => void run(maxEpisodes, true)}
+            disabled={
+              running ||
+              !encodedPath ||
+              (scopeOption === "custom" && !customRangeValid)
+            }
+            onClick={() => void run(selectedScope, true)}
             className="inline-flex min-w-28 items-center justify-center gap-2 rounded-md bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {running && <Spinner />}
@@ -477,7 +568,17 @@ export default function DoctorPanel({
         </div>
       </div>
 
-      {maxEpisodes === null && !running && (
+      {scopeOption === "custom" && !customRangeValid && !running && (
+        <div
+          className="rounded-md border border-red-400/20 bg-red-400/5 px-3 py-2 text-xs text-red-200/80"
+          role="alert"
+        >
+          Enter non-negative episode indices with the end greater than or equal
+          to the start. Both endpoints are included.
+        </div>
+      )}
+
+      {scopeOption === "all" && !running && (
         <div className="rounded-md border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-xs text-amber-200/80">
           Full-dataset checks load every episode parquet and can use substantial
           time and memory on large datasets.

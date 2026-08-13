@@ -104,6 +104,7 @@ function datasetFixture(): LoadedDoctorDataset {
       truncated: false,
     },
     maxEpisodesApplied: null,
+    episodeRangeApplied: null,
     loadWarnings: [],
   };
 }
