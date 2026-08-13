@@ -89,20 +89,26 @@ this fix, and anything you deliberately left out.
 
 `main` is protected. Every change lands through a PR that has:
 
-| Requirement                   | Detail                                              |
-| ----------------------------- | --------------------------------------------------- |
-| No direct pushes to `main`    | Enforced — `git push origin main` is rejected       |
-| **1 approving review**        | From anyone with write access other than the author |
-| **`test`** passing            | `bun test`                                          |
-| **`type-check`** passing      | type-check + lint + format:check                    |
-| Branch up to date with `main` | Merge or rebase `main` in if CI says it's stale     |
-| No force-push to `main`       | Enforced                                            |
+| Requirement                   | Detail                                          |
+| ----------------------------- | ----------------------------------------------- |
+| No direct pushes to `main`    | Enforced — `git push origin main` is rejected   |
+| **`test`** passing            | `bun test`                                      |
+| **`type-check`** passing      | type-check + lint + format:check                |
+| Branch up to date with `main` | Merge or rebase `main` in if CI says it's stale |
+| No force-push to `main`       | Enforced                                        |
 
-New commits dismiss existing approvals, so push your fixups before asking for a
-re-review.
+Review is **not** mechanically enforced — approvals required is set to 0, so you
+can merge your own PR once CI is green. That is a deliberate trade for a small
+team where waiting on a second pair of eyes would stall routine work, not a
+statement that review is optional. Ask for one whenever the change is more than
+mechanical: anything touching the parquet parsers, the annotation or subtask
+persistence paths, or the shape of data that crosses the server/client boundary.
 
-Repository admins can bypass these rules. That exists for emergencies — a broken
-`main`, a stuck release — not as a shortcut around review.
+If you do request a review, note that new commits dismiss existing approvals —
+push your fixups before asking for a re-look.
+
+Repository admins can additionally bypass the CI gates. That exists for
+emergencies — a broken `main`, a stuck release — not as a routine shortcut.
 
 ### What makes a PR easy to review
 
