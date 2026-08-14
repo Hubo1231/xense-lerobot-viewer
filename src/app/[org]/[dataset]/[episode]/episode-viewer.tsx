@@ -255,6 +255,7 @@ function EpisodeViewerInner({
     episodeId,
     videosInfo,
     chartDataGroups,
+    velocityChartDataGroups,
     episodes,
     task,
   } = data;
@@ -789,6 +790,7 @@ function EpisodeViewerInner({
                 <Suspense fallback={null}>
                   <DataRecharts
                     data={chartDataGroups}
+                    velocityData={velocityChartDataGroups}
                     onChartsReady={() => setChartsReady(true)}
                   />
                 </Suspense>
