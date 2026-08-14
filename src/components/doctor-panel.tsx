@@ -7,6 +7,7 @@ import { useFlaggedEpisodes } from "@/context/flagged-episodes-context";
 import {
   DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS,
   DEFAULT_DOCTOR_SPEED_THRESHOLDS,
+  DOCTOR_CHECK_IDS,
   MAX_DOCTOR_ANGULAR_SPEED_DEGREES_PER_SECOND,
   MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD,
   MAX_DOCTOR_LINEAR_SPEED_METERS_PER_SECOND,
@@ -48,6 +49,7 @@ interface CachedDoctorRun {
   episodeRange: DoctorEpisodeRange | null;
   dimensionJumpThresholds?: DoctorDimensionJumpThresholds;
   speedThresholds?: DoctorSpeedThresholds;
+  speedCheckEnabled?: boolean;
   result: DoctorRunResponse;
 }
 
@@ -396,6 +398,13 @@ export default function DoctorPanel({
           DEFAULT_DOCTOR_SPEED_THRESHOLDS.angularDegreesPerSecond,
       ),
     );
+  const [speedCheckEnabled, setSpeedCheckEnabled] = useState(
+    cached?.speedCheckEnabled ??
+      cached?.result.report.checks.some(
+        (check) => check.name === "TCP Speed Limit Detection",
+      ) ??
+      false,
+  );
   const [result, setResult] = useState<DoctorRunResponse | null>(
     cached?.result ?? null,
   );
@@ -416,6 +425,7 @@ export default function DoctorPanel({
       scope: DoctorScope,
       dimensionJumpThresholds: DoctorDimensionJumpThresholds,
       speedThresholds: DoctorSpeedThresholds,
+      speedCheckEnabled: boolean,
       refresh = false,
     ) => {
       if (!encodedPath) {
@@ -434,6 +444,9 @@ export default function DoctorPanel({
           episodeRange: scope.episodeRange,
           dimensionJumpThresholds,
           speedThresholds,
+          checks: DOCTOR_CHECK_IDS.filter(
+            (checkId) => speedCheckEnabled || checkId !== "speed_limits",
+          ),
           signal: controller.signal,
           refresh,
           onProgress: (nextProgress) => {
@@ -446,6 +459,7 @@ export default function DoctorPanel({
           ...scope,
           dimensionJumpThresholds,
           speedThresholds,
+          speedCheckEnabled,
           result: next,
         });
         setExpanded(
@@ -504,6 +518,12 @@ export default function DoctorPanel({
             DEFAULT_DOCTOR_SPEED_THRESHOLDS.angularDegreesPerSecond,
         ),
       );
+      setSpeedCheckEnabled(
+        previous.speedCheckEnabled ??
+          previous.result.report.checks.some(
+            (check) => check.name === "TCP Speed Limit Detection",
+          ),
+      );
       setResult(previous.result);
       setError(null);
       setExpanded(
@@ -531,6 +551,7 @@ export default function DoctorPanel({
       setAngularSpeedDegreesPerSecond(
         String(DEFAULT_DOCTOR_SPEED_THRESHOLDS.angularDegreesPerSecond),
       );
+      setSpeedCheckEnabled(false);
       setResult(null);
       setError(null);
       setProgress(INITIAL_PROGRESS);
@@ -672,6 +693,7 @@ export default function DoctorPanel({
       "  Display limit: 5 events per episode and signal",
       `  Linear xyz speed limit: ${linearMetersPerSecond} m/s`,
       `  Angular xyz speed limit: ${angularDegreesPerSecond} deg/s`,
+      `  TCP speed check: ${speedCheckEnabled ? "enabled" : "disabled"}`,
       `  Speed trigger: any |vx|/|vy|/|vz| >${linearMetersPerSecond} m/s or |ωx|/|ωy|/|ωz| >${angularDegreesPerSecond} deg/s`,
       "",
       episodeLengthDistributionCopyText,
@@ -688,6 +710,7 @@ export default function DoctorPanel({
     episodeLengthDistributionCopyText,
     report,
     result,
+    speedCheckEnabled,
   ]);
   const copyAffectedEpisodeIds = useCallback(async () => {
     if (affectedEpisodeIds.length === 0) return;
@@ -820,14 +843,17 @@ export default function DoctorPanel({
               running ||
               !encodedPath ||
               !dimensionJumpThresholdsValid ||
-              !speedThresholdsValid ||
+              (speedCheckEnabled && !speedThresholdsValid) ||
               (scopeOption === "custom" && !customRangeValid)
             }
             onClick={() =>
               void run(
                 selectedScope,
                 selectedDimensionJumpThresholds,
-                selectedSpeedThresholds,
+                speedCheckEnabled
+                  ? selectedSpeedThresholds
+                  : DEFAULT_DOCTOR_SPEED_THRESHOLDS,
+                speedCheckEnabled,
                 true,
               )
             }
@@ -893,13 +919,36 @@ export default function DoctorPanel({
       <div className="rounded-lg border border-white/10 bg-[var(--surface-1)]/45 px-4 py-3">
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(22rem,auto)] md:items-center">
           <div className="min-w-0">
-            <p className="text-xs font-medium text-slate-300">
-              TCP Speed Limit Detection
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-medium text-slate-300">
+                TCP Speed Limit Detection
+              </p>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={speedCheckEnabled}
+                aria-label="Enable TCP speed limit detection"
+                disabled={running}
+                onClick={() => setSpeedCheckEnabled((enabled) => !enabled)}
+                className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${speedCheckEnabled ? "border-cyan-300/60 bg-cyan-400/70" : "border-white/15 bg-white/10"}`}
+              >
+                <span
+                  className={`h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${speedCheckEnabled ? "translate-x-3.5" : "translate-x-0.5"}`}
+                />
+              </button>
+              <span className="text-[10px] text-slate-500">
+                {speedCheckEnabled ? "On" : "Off"}
+              </span>
+            </div>
             <p className="mt-1 text-[11px] text-slate-500">
               Checks each world-frame xyz direction independently. Translation
               uses metres per second; rotation uses the SO(3) angular velocity
               in degrees per second.
+            </p>
+            <p className="mt-1 text-[10px] text-slate-600">
+              {speedCheckEnabled
+                ? "Enabled for the next Doctor run."
+                : "Turn on to include this check in the next Doctor run."}
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -915,7 +964,7 @@ export default function DoctorPanel({
                 onChange={(event) =>
                   setLinearSpeedMetersPerSecond(event.target.value)
                 }
-                aria-invalid={!speedThresholdsValid}
+                aria-invalid={speedCheckEnabled && !speedThresholdsValid}
                 className="w-full rounded-md border border-white/10 bg-[var(--surface-1)] px-2 py-1.5 text-xs tabular text-slate-300 outline-none transition-colors focus:border-cyan-400/50 disabled:opacity-50 sm:w-24"
               />
             </label>
@@ -931,7 +980,7 @@ export default function DoctorPanel({
                 onChange={(event) =>
                   setAngularSpeedDegreesPerSecond(event.target.value)
                 }
-                aria-invalid={!speedThresholdsValid}
+                aria-invalid={speedCheckEnabled && !speedThresholdsValid}
                 className="w-full rounded-md border border-white/10 bg-[var(--surface-1)] px-2 py-1.5 text-xs tabular text-slate-300 outline-none transition-colors focus:border-cyan-400/50 disabled:opacity-50 sm:w-24"
               />
             </label>
@@ -963,7 +1012,7 @@ export default function DoctorPanel({
         </div>
       )}
 
-      {!speedThresholdsValid && !running && (
+      {speedCheckEnabled && !speedThresholdsValid && !running && (
         <div
           className="rounded-md border border-red-400/20 bg-red-400/5 px-3 py-2 text-xs text-red-200/80"
           role="alert"
