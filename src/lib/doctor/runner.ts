@@ -1,6 +1,7 @@
 import path from "node:path";
 import {
   DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS,
+  DEFAULT_DOCTOR_SPEED_THRESHOLDS,
   DOCTOR_CHECK_IDS,
   type DoctorCheckId,
   type DoctorCheckResult,
@@ -10,11 +11,13 @@ import {
   type DoctorReport,
   type DoctorRunResponse,
   type DoctorSeverity,
+  type DoctorSpeedThresholds,
 } from "@/types/doctor.types";
 import { loadDoctorDataset } from "./loader";
 import { throwIfDoctorAborted, type LoadedDoctorDataset } from "./model";
 import { checkAnomalies, checkPerEpisode } from "./checks/anomalies";
 import { checkDimensionJumps } from "./checks/jumps";
+import { checkSpeedLimits } from "./checks/speeds";
 import {
   checkActions,
   checkConsistency,
@@ -26,12 +29,13 @@ import {
 } from "./checks/core";
 import { checkPortability, checkVideos } from "./checks/files";
 
-export const TYPESCRIPT_DOCTOR_VERSION = "1.0.0-ts";
+export const TYPESCRIPT_DOCTOR_VERSION = "1.1.0-ts";
 
 export interface RunDoctorOptions {
   maxEpisodes: number | null;
   episodeRange?: DoctorEpisodeRange | null;
   dimensionJumpThresholds?: DoctorDimensionJumpThresholds;
+  speedThresholds?: DoctorSpeedThresholds;
   checks?: DoctorCheckId[] | null;
   signal?: AbortSignal;
   onProgress?: (progress: DoctorProgress) => void;
@@ -47,6 +51,7 @@ const CHECKS: Record<
   temporal: checkTemporal,
   actions: checkActions,
   dimension_jumps: checkDimensionJumps,
+  speed_limits: checkSpeedLimits,
   videos: checkVideos,
   statistics: checkStatistics,
   episodes: checkEpisodes,
@@ -62,6 +67,7 @@ const CHECK_NAMES: Record<DoctorCheckId, string> = {
   temporal: "Temporal Consistency",
   actions: "Action Quality",
   dimension_jumps: "Dimension-Level Jump Detection",
+  speed_limits: "TCP Speed Limit Detection",
   videos: "Video Integrity",
   statistics: "Data Distribution",
   episodes: "Episode Health",
@@ -135,6 +141,8 @@ export async function runTypeScriptDoctor(
     : [...DOCTOR_CHECK_IDS];
   const dimensionJumpThresholds =
     options.dimensionJumpThresholds ?? DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS;
+  const speedThresholds =
+    options.speedThresholds ?? DEFAULT_DOCTOR_SPEED_THRESHOLDS;
   reportProgress(options, {
     phase: "checks",
     completed: 0,
@@ -155,7 +163,9 @@ export async function runTypeScriptDoctor(
     checks.push(
       await (checkId === "dimension_jumps"
         ? checkDimensionJumps(dataset, dimensionJumpThresholds)
-        : CHECKS[checkId](dataset)),
+        : checkId === "speed_limits"
+          ? checkSpeedLimits(dataset, speedThresholds)
+          : CHECKS[checkId](dataset)),
     );
     reportProgress(options, {
       phase: "checks",
@@ -190,6 +200,7 @@ export async function runTypeScriptDoctor(
       requested_max_episodes: options.maxEpisodes,
       requested_episode_range: options.episodeRange ?? null,
       dimension_jump_thresholds: { ...dimensionJumpThresholds },
+      speed_thresholds: { ...speedThresholds },
       loaded_episode_count: dataset.episodesData.length,
       loaded_episode_indices: dataset.episodesData.map(
         (episode) => episode.episodeIndex,

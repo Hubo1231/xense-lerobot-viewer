@@ -4,6 +4,7 @@ import type {
   DoctorEpisodeRange,
   DoctorProgress,
   DoctorRunResponse,
+  DoctorSpeedThresholds,
   DoctorStreamEvent,
 } from "@/types/doctor.types";
 
@@ -11,6 +12,7 @@ export interface RunDoctorOptions {
   maxEpisodes: number | null;
   episodeRange?: DoctorEpisodeRange | null;
   dimensionJumpThresholds?: DoctorDimensionJumpThresholds;
+  speedThresholds?: DoctorSpeedThresholds;
   checks?: DoctorCheckId[];
   signal?: AbortSignal;
   onProgress?: (progress: DoctorProgress) => void;
@@ -53,6 +55,7 @@ export async function runDatasetDoctor(
         maxEpisodes: options.maxEpisodes,
         episodeRange: options.episodeRange,
         dimensionJumpThresholds: options.dimensionJumpThresholds,
+        speedThresholds: options.speedThresholds,
         checks: options.checks,
       }),
     },

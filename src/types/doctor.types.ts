@@ -3,6 +3,7 @@ export const DOCTOR_CHECK_IDS = [
   "temporal",
   "actions",
   "dimension_jumps",
+  "speed_limits",
   "videos",
   "statistics",
   "episodes",
@@ -43,6 +44,21 @@ export const DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS: DoctorDimensionJumpThresh
 export const MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD = 1_000;
 export const DOCTOR_DIMENSION_JUMP_REPORT_Z_THRESHOLD = 8;
 
+export interface DoctorSpeedThresholds {
+  /** Maximum absolute vx/vy/vz component in metres per second. */
+  linearMetersPerSecond: number;
+  /** Maximum absolute world-frame wx/wy/wz component in degrees per second. */
+  angularDegreesPerSecond: number;
+}
+
+export const DEFAULT_DOCTOR_SPEED_THRESHOLDS: DoctorSpeedThresholds = {
+  linearMetersPerSecond: 1.5,
+  angularDegreesPerSecond: 270,
+};
+
+export const MAX_DOCTOR_LINEAR_SPEED_METERS_PER_SECOND = 1_000;
+export const MAX_DOCTOR_ANGULAR_SPEED_DEGREES_PER_SECOND = 100_000;
+
 /** Stable report schema shared with the original lerobot-doctor UI contract. */
 export interface DoctorReport {
   version: string;
@@ -63,6 +79,7 @@ export interface DoctorExecution {
   requested_max_episodes: number | null;
   requested_episode_range: DoctorEpisodeRange | null;
   dimension_jump_thresholds?: DoctorDimensionJumpThresholds;
+  speed_thresholds?: DoctorSpeedThresholds;
   loaded_episode_count: number;
   loaded_episode_indices: number[];
   engine: "typescript";

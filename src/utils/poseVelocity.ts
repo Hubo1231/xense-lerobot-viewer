@@ -185,11 +185,12 @@ function rotationVector(matrix: Matrix3): Vector3 | null {
   return [skew[0] * scale, skew[1] * scale, skew[2] * scale];
 }
 
-function angularVelocity(
+export function worldAngularVelocityDegreesPerSecond(
   previous: readonly number[],
   current: readonly number[],
   deltaSeconds: number,
 ): Vector3 | null {
+  if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return null;
   const previousRotation = rotation6dToMatrix(previous);
   const currentRotation = rotation6dToMatrix(current);
   if (!previousRotation || !currentRotation) return null;
@@ -406,7 +407,7 @@ export function buildPoseVelocityChartGroups(
                 : current;
             const velocity =
               current && previous && dt > 0
-                ? angularVelocity(previous, current, dt)
+                ? worldAngularVelocityDegreesPerSecond(previous, current, dt)
                 : ([0, 0, 0] as Vector3);
             for (const [
               componentIndex,

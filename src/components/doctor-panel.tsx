@@ -6,7 +6,10 @@ import { EpisodeLengthHistogram } from "@/components/stats-panel";
 import { useFlaggedEpisodes } from "@/context/flagged-episodes-context";
 import {
   DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS,
+  DEFAULT_DOCTOR_SPEED_THRESHOLDS,
+  MAX_DOCTOR_ANGULAR_SPEED_DEGREES_PER_SECOND,
   MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD,
+  MAX_DOCTOR_LINEAR_SPEED_METERS_PER_SECOND,
   extractAffectedDoctorEpisodeIds,
   extractDoctorEpisodeIdsFromMessage,
   type DoctorCheckResult,
@@ -16,6 +19,7 @@ import {
   type DoctorReport,
   type DoctorRunResponse,
   type DoctorSeverity,
+  type DoctorSpeedThresholds,
 } from "@/types/doctor.types";
 import { copyTextToClipboard } from "@/utils/clipboard";
 import { runDatasetDoctor } from "@/utils/doctorClient";
@@ -43,6 +47,7 @@ interface CachedDoctorRun {
   maxEpisodes: number | null;
   episodeRange: DoctorEpisodeRange | null;
   dimensionJumpThresholds?: DoctorDimensionJumpThresholds;
+  speedThresholds?: DoctorSpeedThresholds;
   result: DoctorRunResponse;
 }
 
@@ -232,11 +237,13 @@ function SummaryCard({
 function CheckCard({
   check,
   dimensionJumpThresholds,
+  speedThresholds,
   expanded,
   onToggle,
 }: {
   check: DoctorCheckResult;
   dimensionJumpThresholds: DoctorDimensionJumpThresholds;
+  speedThresholds: DoctorSpeedThresholds;
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -284,6 +291,13 @@ function CheckCard({
                 Condition: ≥2 dimensions &gt;
                 {dimensionJumpThresholds.dimensionZThreshold}σ or 1 dimension
                 &gt;{dimensionJumpThresholds.extremeSingleDimensionZ}σ
+              </p>
+            )}
+            {check.name === "TCP Speed Limit Detection" && (
+              <p className="mt-0.5 text-[10px] leading-4 text-slate-500 sm:mt-0">
+                Condition: |vx|/|vy|/|vz| &gt;{" "}
+                {speedThresholds.linearMetersPerSecond} m/s or |ωx|/|ωy|/|ωz|
+                &gt; {speedThresholds.angularDegreesPerSecond} deg/s
               </p>
             )}
           </div>
@@ -369,6 +383,19 @@ export default function DoctorPanel({
         DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS.extremeSingleDimensionZ,
     ),
   );
+  const [linearSpeedMetersPerSecond, setLinearSpeedMetersPerSecond] = useState(
+    String(
+      cached?.speedThresholds?.linearMetersPerSecond ??
+        DEFAULT_DOCTOR_SPEED_THRESHOLDS.linearMetersPerSecond,
+    ),
+  );
+  const [angularSpeedDegreesPerSecond, setAngularSpeedDegreesPerSecond] =
+    useState(
+      String(
+        cached?.speedThresholds?.angularDegreesPerSecond ??
+          DEFAULT_DOCTOR_SPEED_THRESHOLDS.angularDegreesPerSecond,
+      ),
+    );
   const [result, setResult] = useState<DoctorRunResponse | null>(
     cached?.result ?? null,
   );
@@ -388,6 +415,7 @@ export default function DoctorPanel({
     async (
       scope: DoctorScope,
       dimensionJumpThresholds: DoctorDimensionJumpThresholds,
+      speedThresholds: DoctorSpeedThresholds,
       refresh = false,
     ) => {
       if (!encodedPath) {
@@ -405,6 +433,7 @@ export default function DoctorPanel({
           maxEpisodes: scope.maxEpisodes,
           episodeRange: scope.episodeRange,
           dimensionJumpThresholds,
+          speedThresholds,
           signal: controller.signal,
           refresh,
           onProgress: (nextProgress) => {
@@ -416,6 +445,7 @@ export default function DoctorPanel({
         doctorRunCache.set(encodedPath, {
           ...scope,
           dimensionJumpThresholds,
+          speedThresholds,
           result: next,
         });
         setExpanded(
@@ -462,6 +492,18 @@ export default function DoctorPanel({
             DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS.extremeSingleDimensionZ,
         ),
       );
+      setLinearSpeedMetersPerSecond(
+        String(
+          previous.speedThresholds?.linearMetersPerSecond ??
+            DEFAULT_DOCTOR_SPEED_THRESHOLDS.linearMetersPerSecond,
+        ),
+      );
+      setAngularSpeedDegreesPerSecond(
+        String(
+          previous.speedThresholds?.angularDegreesPerSecond ??
+            DEFAULT_DOCTOR_SPEED_THRESHOLDS.angularDegreesPerSecond,
+        ),
+      );
       setResult(previous.result);
       setError(null);
       setExpanded(
@@ -482,6 +524,12 @@ export default function DoctorPanel({
         String(
           DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS.extremeSingleDimensionZ,
         ),
+      );
+      setLinearSpeedMetersPerSecond(
+        String(DEFAULT_DOCTOR_SPEED_THRESHOLDS.linearMetersPerSecond),
+      );
+      setAngularSpeedDegreesPerSecond(
+        String(DEFAULT_DOCTOR_SPEED_THRESHOLDS.angularDegreesPerSecond),
       );
       setResult(null);
       setError(null);
@@ -515,6 +563,25 @@ export default function DoctorPanel({
     dimensionZThreshold: parsedDimensionZThreshold,
     extremeSingleDimensionZ: parsedExtremeSingleDimensionZ,
   };
+  const parsedLinearSpeedMetersPerSecond = Number(linearSpeedMetersPerSecond);
+  const parsedAngularSpeedDegreesPerSecond = Number(
+    angularSpeedDegreesPerSecond,
+  );
+  const speedThresholdsValid =
+    linearSpeedMetersPerSecond.trim() !== "" &&
+    angularSpeedDegreesPerSecond.trim() !== "" &&
+    Number.isFinite(parsedLinearSpeedMetersPerSecond) &&
+    Number.isFinite(parsedAngularSpeedDegreesPerSecond) &&
+    parsedLinearSpeedMetersPerSecond > 0 &&
+    parsedAngularSpeedDegreesPerSecond > 0 &&
+    parsedLinearSpeedMetersPerSecond <=
+      MAX_DOCTOR_LINEAR_SPEED_METERS_PER_SECOND &&
+    parsedAngularSpeedDegreesPerSecond <=
+      MAX_DOCTOR_ANGULAR_SPEED_DEGREES_PER_SECOND;
+  const selectedSpeedThresholds: DoctorSpeedThresholds = {
+    linearMetersPerSecond: parsedLinearSpeedMetersPerSecond,
+    angularDegreesPerSecond: parsedAngularSpeedDegreesPerSecond,
+  };
   const selectedScope: DoctorScope = {
     maxEpisodes:
       scopeOption === "all" || scopeOption === "custom"
@@ -532,6 +599,8 @@ export default function DoctorPanel({
   const activeDimensionJumpThresholds =
     result?.execution.dimension_jump_thresholds ??
     DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS;
+  const activeSpeedThresholds =
+    result?.execution.speed_thresholds ?? DEFAULT_DOCTOR_SPEED_THRESHOLDS;
   const doctorScopeLabel = useMemo(() => {
     const execution = result?.execution;
     if (!execution) return "—";
@@ -570,6 +639,8 @@ export default function DoctorPanel({
     const name = datasetName.trim() || report.dataset_name || "Unknown dataset";
     const { dimensionZThreshold, extremeSingleDimensionZ } =
       activeDimensionJumpThresholds;
+    const { linearMetersPerSecond, angularDegreesPerSecond } =
+      activeSpeedThresholds;
     const summary = (["PASS", "WARN", "FAIL"] as const)
       .map((severity) => `${severity} ${report.summary[severity] ?? 0}`)
       .join(" · ");
@@ -599,6 +670,9 @@ export default function DoctorPanel({
       `  Trigger: ≥2 dimensions >${dimensionZThreshold}σ or 1 dimension >${extremeSingleDimensionZ}σ`,
       "  Report related dimensions: >8σ",
       "  Display limit: 5 events per episode and signal",
+      `  Linear xyz speed limit: ${linearMetersPerSecond} m/s`,
+      `  Angular xyz speed limit: ${angularDegreesPerSecond} deg/s`,
+      `  Speed trigger: any |vx|/|vy|/|vz| >${linearMetersPerSecond} m/s or |ωx|/|ωy|/|ωz| >${angularDegreesPerSecond} deg/s`,
       "",
       episodeLengthDistributionCopyText,
       "",
@@ -607,6 +681,7 @@ export default function DoctorPanel({
     ].join("\n");
   }, [
     activeDimensionJumpThresholds,
+    activeSpeedThresholds,
     affectedEpisodeIds,
     datasetName,
     doctorScopeLabel,
@@ -665,8 +740,8 @@ export default function DoctorPanel({
           <p className="mt-1 max-w-2xl text-sm text-slate-400">
             Native TypeScript dataset quality diagnostics. Checks metadata,
             timing, actions, videos, statistics, episode consistency, training
-            readiness, anomalies, dimension-level jumps, and portability without
-            a Python runtime.
+            readiness, anomalies, dimension-level jumps, TCP speed limits, and
+            portability without a Python runtime.
           </p>
           <p
             className="mt-1 truncate text-xs text-slate-500"
@@ -745,10 +820,16 @@ export default function DoctorPanel({
               running ||
               !encodedPath ||
               !dimensionJumpThresholdsValid ||
+              !speedThresholdsValid ||
               (scopeOption === "custom" && !customRangeValid)
             }
             onClick={() =>
-              void run(selectedScope, selectedDimensionJumpThresholds, true)
+              void run(
+                selectedScope,
+                selectedDimensionJumpThresholds,
+                selectedSpeedThresholds,
+                true,
+              )
             }
             className="inline-flex min-w-28 items-center justify-center gap-2 rounded-md bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -809,6 +890,59 @@ export default function DoctorPanel({
         </div>
       </div>
 
+      <div className="rounded-lg border border-white/10 bg-[var(--surface-1)]/45 px-4 py-3">
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(22rem,auto)] md:items-center">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-slate-300">
+              TCP Speed Limit Detection
+            </p>
+            <p className="mt-1 text-[11px] text-slate-500">
+              Checks each world-frame xyz direction independently. Translation
+              uses metres per second; rotation uses the SO(3) angular velocity
+              in degrees per second.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="flex min-w-0 flex-col gap-1 text-[11px] text-slate-400">
+              <span>Linear xyz (m/s)</span>
+              <input
+                type="number"
+                min="0.1"
+                max={MAX_DOCTOR_LINEAR_SPEED_METERS_PER_SECOND}
+                step="0.1"
+                value={linearSpeedMetersPerSecond}
+                disabled={running}
+                onChange={(event) =>
+                  setLinearSpeedMetersPerSecond(event.target.value)
+                }
+                aria-invalid={!speedThresholdsValid}
+                className="w-full rounded-md border border-white/10 bg-[var(--surface-1)] px-2 py-1.5 text-xs tabular text-slate-300 outline-none transition-colors focus:border-cyan-400/50 disabled:opacity-50 sm:w-24"
+              />
+            </label>
+            <label className="flex min-w-0 flex-col gap-1 text-[11px] text-slate-400">
+              <span>Angular xyz (deg/s)</span>
+              <input
+                type="number"
+                min="1"
+                max={MAX_DOCTOR_ANGULAR_SPEED_DEGREES_PER_SECOND}
+                step="1"
+                value={angularSpeedDegreesPerSecond}
+                disabled={running}
+                onChange={(event) =>
+                  setAngularSpeedDegreesPerSecond(event.target.value)
+                }
+                aria-invalid={!speedThresholdsValid}
+                className="w-full rounded-md border border-white/10 bg-[var(--surface-1)] px-2 py-1.5 text-xs tabular text-slate-300 outline-none transition-colors focus:border-cyan-400/50 disabled:opacity-50 sm:w-24"
+              />
+            </label>
+            <p className="text-[11px] tabular text-cyan-300/80 sm:col-span-2">
+              |vx| / |vy| / |vz| ≤ {linearSpeedMetersPerSecond || "?"} m/s ·
+              |ωx| / |ωy| / |ωz| ≤ {angularSpeedDegreesPerSecond || "?"} deg/s
+            </p>
+          </div>
+        </div>
+      </div>
+
       {scopeOption === "custom" && !customRangeValid && !running && (
         <div
           className="rounded-md border border-red-400/20 bg-red-400/5 px-3 py-2 text-xs text-red-200/80"
@@ -826,6 +960,17 @@ export default function DoctorPanel({
         >
           Enter dimension-jump z-score thresholds greater than 0 and no more
           than {MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD}.
+        </div>
+      )}
+
+      {!speedThresholdsValid && !running && (
+        <div
+          className="rounded-md border border-red-400/20 bg-red-400/5 px-3 py-2 text-xs text-red-200/80"
+          role="alert"
+        >
+          Enter speed thresholds greater than 0. Linear speed must be no more
+          than {MAX_DOCTOR_LINEAR_SPEED_METERS_PER_SECOND} m/s and angular speed
+          no more than {MAX_DOCTOR_ANGULAR_SPEED_DEGREES_PER_SECOND} deg/s.
         </div>
       )}
 
@@ -1108,6 +1253,10 @@ export default function DoctorPanel({
                 dimensionJumpThresholds={
                   result.execution.dimension_jump_thresholds ??
                   DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS
+                }
+                speedThresholds={
+                  result.execution.speed_thresholds ??
+                  DEFAULT_DOCTOR_SPEED_THRESHOLDS
                 }
                 expanded={expanded.has(check.name)}
                 onToggle={() =>

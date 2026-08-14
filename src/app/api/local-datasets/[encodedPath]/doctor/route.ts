@@ -5,13 +5,17 @@ import { runTypeScriptDoctor } from "@/lib/doctor/runner";
 import { resolveDatasetRoot } from "@/lib/local-dataset-paths";
 import {
   DEFAULT_DOCTOR_DIMENSION_JUMP_THRESHOLDS,
+  DEFAULT_DOCTOR_SPEED_THRESHOLDS,
   DOCTOR_CHECK_IDS,
+  MAX_DOCTOR_ANGULAR_SPEED_DEGREES_PER_SECOND,
   MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD,
+  MAX_DOCTOR_LINEAR_SPEED_METERS_PER_SECOND,
   type DoctorCheckId,
   type DoctorDimensionJumpThresholds,
   type DoctorEpisodeRange,
   type DoctorProgress,
   type DoctorRunResponse,
+  type DoctorSpeedThresholds,
   type DoctorStreamEvent,
 } from "@/types/doctor.types";
 
@@ -29,6 +33,7 @@ interface DoctorRequestBody {
   maxEpisodes?: unknown;
   episodeRange?: unknown;
   dimensionJumpThresholds?: unknown;
+  speedThresholds?: unknown;
   checks?: unknown;
 }
 
@@ -45,6 +50,7 @@ function parseOptions(body: DoctorRequestBody):
       maxEpisodes: number | null;
       episodeRange: DoctorEpisodeRange | null;
       dimensionJumpThresholds: DoctorDimensionJumpThresholds;
+      speedThresholds: DoctorSpeedThresholds;
       checks: DoctorCheckId[] | null;
     }
   | { error: string } {
@@ -145,7 +151,50 @@ function parseOptions(body: DoctorRequestBody):
       extremeSingleDimensionZ,
     };
   }
-  return { maxEpisodes, episodeRange, dimensionJumpThresholds, checks };
+
+  let speedThresholds = DEFAULT_DOCTOR_SPEED_THRESHOLDS;
+  if (body.speedThresholds !== undefined) {
+    const value = body.speedThresholds;
+    if (
+      !value ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      !("linearMetersPerSecond" in value) ||
+      !("angularDegreesPerSecond" in value)
+    ) {
+      return {
+        error:
+          "speedThresholds must contain linearMetersPerSecond and angularDegreesPerSecond.",
+      };
+    }
+    const linearMetersPerSecond = value.linearMetersPerSecond;
+    const angularDegreesPerSecond = value.angularDegreesPerSecond;
+    if (
+      typeof linearMetersPerSecond !== "number" ||
+      typeof angularDegreesPerSecond !== "number" ||
+      !Number.isFinite(linearMetersPerSecond) ||
+      !Number.isFinite(angularDegreesPerSecond) ||
+      linearMetersPerSecond <= 0 ||
+      angularDegreesPerSecond <= 0 ||
+      linearMetersPerSecond > MAX_DOCTOR_LINEAR_SPEED_METERS_PER_SECOND ||
+      angularDegreesPerSecond > MAX_DOCTOR_ANGULAR_SPEED_DEGREES_PER_SECOND
+    ) {
+      return {
+        error: `Speed thresholds must be greater than 0; linear speed must be at most ${MAX_DOCTOR_LINEAR_SPEED_METERS_PER_SECOND} m/s and angular speed at most ${MAX_DOCTOR_ANGULAR_SPEED_DEGREES_PER_SECOND} deg/s.`,
+      };
+    }
+    speedThresholds = {
+      linearMetersPerSecond,
+      angularDegreesPerSecond,
+    };
+  }
+  return {
+    maxEpisodes,
+    episodeRange,
+    dimensionJumpThresholds,
+    speedThresholds,
+    checks,
+  };
 }
 
 async function validateDatasetRoot(encodedPath: string): Promise<{
@@ -232,6 +281,7 @@ function streamDoctorRun(
     maxEpisodes: number | null;
     episodeRange: DoctorEpisodeRange | null;
     dimensionJumpThresholds: DoctorDimensionJumpThresholds;
+    speedThresholds: DoctorSpeedThresholds;
     checks: DoctorCheckId[] | null;
   },
   controller: AbortController,
@@ -260,6 +310,7 @@ function streamDoctorRun(
           maxEpisodes: options.maxEpisodes,
           episodeRange: options.episodeRange,
           dimensionJumpThresholds: options.dimensionJumpThresholds,
+          speedThresholds: options.speedThresholds,
           checks: options.checks,
           signal: controller.signal,
           onProgress: (progress: DoctorProgress) =>
@@ -336,7 +387,8 @@ export async function POST(
     ? `range-${options.episodeRange.start}-${options.episodeRange.end}`
     : (options.maxEpisodes ?? "all");
   const thresholdKey = `${options.dimensionJumpThresholds.dimensionZThreshold}-${options.dimensionJumpThresholds.extremeSingleDimensionZ}`;
-  const key = `${dataset.root}:${dataset.signature}:${scopeKey}:jumps-${thresholdKey}:${(options.checks ?? DOCTOR_CHECK_IDS).join(",")}`;
+  const speedKey = `${options.speedThresholds.linearMetersPerSecond}-${options.speedThresholds.angularDegreesPerSecond}`;
+  const key = `${dataset.root}:${dataset.signature}:${scopeKey}:jumps-${thresholdKey}:speeds-${speedKey}:${(options.checks ?? DOCTOR_CHECK_IDS).join(",")}`;
   const wantsStream = request.nextUrl.searchParams.get("stream") === "1";
   const forceRefresh = request.nextUrl.searchParams.get("refresh") === "1";
   const cached = cache.get(key);
@@ -375,6 +427,7 @@ export async function POST(
         maxEpisodes: options.maxEpisodes,
         episodeRange: options.episodeRange,
         dimensionJumpThresholds: options.dimensionJumpThresholds,
+        speedThresholds: options.speedThresholds,
         checks: options.checks,
         signal: controller.signal,
       });
