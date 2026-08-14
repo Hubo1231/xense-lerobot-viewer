@@ -2,3 +2,6 @@
 # (compiles Pi-style meta/annotations.json into lerobot-native subtask_index).
 pandas>=2.0
 pyarrow>=14.0
+
+# Dependency for scripts/sync_hf_dataset.py (manual Hugging Face sync).
+huggingface_hub>=0.30

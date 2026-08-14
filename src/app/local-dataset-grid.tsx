@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { LocalDatasetSummary } from "@/lib/local-datasets-discovery";
+import type { DailyDelta } from "@/utils/corpusHistory";
 import {
   getDatasetPrefix,
   groupDatasetsByPrefix,
@@ -14,6 +15,7 @@ type LocalDatasetGridProps = {
   root: string;
   datasets: LocalDatasetSummary[];
   errors: { path: string; message: string }[];
+  delta: DailyDelta;
 };
 
 /**
@@ -27,6 +29,7 @@ export default function LocalDatasetGrid({
   root,
   datasets,
   errors,
+  delta,
 }: LocalDatasetGridProps) {
   const searchParams = useSearchParams();
   const [selectedPrefix, setSelectedPrefix] = useState<string | null>(() =>
@@ -99,8 +102,8 @@ export default function LocalDatasetGrid({
     <CategoryLanding
       root={root}
       groups={groups}
-      datasetCount={datasets.length}
       overall={overall}
+      delta={delta}
       errors={errors}
       onSelect={selectCategory}
     />
