@@ -191,6 +191,41 @@ On load, atoms are read with this precedence: **unsaved in-session edits → the
 
 This fork is **local-only**: there is no FastAPI backend and no push-to-Hub. Writing annotations back into the dataset's `data/chunk-*/file-*.parquet` (the lerobot export path) is intentionally **not** implemented — the JSON sidecar is the source of truth, and the visualizer reads it directly. Because saving writes into the dataset's `meta/` directory, mount your dataset root **writable** (drop the `:ro` flag in the Docker examples below) if you want to persist edits.
 
+## Homepage dashboard & Hugging Face sync
+
+The homepage opens on a corpus dashboard: total recorded hours, a proportional
+tape of where those hours come from, and one tab per source with its own
+figures plus growth since the last snapshot.
+
+Growth needs a baseline, so the homepage records a daily snapshot to
+`<LOCAL_DATASET_ROOT>/.xense-viewer/corpus-history.json` (one row per day,
+same-day re-renders overwrite). It is the only file the browse path writes; a
+read-only root simply means no growth figures.
+
+### Sync
+
+Each source tab has a **Sync from Hugging Face** button. It always lists what
+would be pulled before transferring anything — some orgs hold far more on the
+Hub than you have locally, and the count is the only warning you get.
+
+Requires Python with `huggingface_hub` (`pip install -r scripts/requirements.txt`)
+and a token for private repos (`huggingface-cli login`).
+
+> **Endpoint note.** Sync defaults to `HF_ENDPOINT=https://hf-mirror.com` to keep
+> downloads off a metered VPN. If the mirror answers with a `308` redirect to
+> `huggingface.co`, downloads fail with an explanatory message — and the mirror
+> is saving you nothing anyway, because the bytes then come from the origin.
+>
+> That usually means a transparent proxy is capturing `hf-mirror.com` itself, so
+> the mirror sees a foreign IP and bounces you to the origin. Add `hf-mirror.com`
+> to the proxy's direct/bypass rules and it should serve normally.
+>
+> To download in the meantime:
+>
+> ```bash
+> HF_ENDPOINT=https://huggingface.co bun dev
+> ```
+
 ## Architecture notes
 
 - Dataset files are served by an internal route `/api/local-datasets/[encodedPath]/[...filePath]` with HTTP range support for video streaming.

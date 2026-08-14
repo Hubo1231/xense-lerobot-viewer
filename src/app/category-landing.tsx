@@ -3,6 +3,8 @@
 import React, { useMemo, useState } from "react";
 import type { DatasetGroup } from "@/utils/datasetGrouping";
 import HoverPlayVideo from "@/components/hover-play-video";
+import CorpusDashboard from "@/components/corpus-dashboard";
+import type { DailyDelta } from "@/utils/corpusHistory";
 
 type OverallCounts = {
   ok: number;
@@ -13,9 +15,9 @@ type OverallCounts = {
 type CategoryLandingProps = {
   root: string;
   groups: DatasetGroup[];
-  datasetCount: number;
   overall: OverallCounts;
   errors: { path: string; message: string }[];
+  delta: DailyDelta;
   onSelect: (prefix: string) => void;
 };
 
@@ -27,9 +29,9 @@ function formatTotalEpisodes(value: number): string {
 export default function CategoryLanding({
   root,
   groups,
-  datasetCount,
   overall,
   errors,
+  delta,
   onSelect,
 }: CategoryLandingProps) {
   const [query, setQuery] = useState("");
@@ -58,30 +60,18 @@ export default function CategoryLanding({
         </h1>
         <p className="mt-2 text-sm text-slate-400">
           Browsing <span className="font-mono text-cyan-200/90">{root}</span>
-          <span className="mx-2 text-slate-600">·</span>
-          {groups.length} dataset{groups.length === 1 ? "" : "s"}
-          <span className="mx-2 text-slate-600">·</span>
-          {datasetCount} task{datasetCount === 1 ? "" : "s"} found
         </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            {overall.ok} healthy
-          </span>
-          {overall.incomplete > 0 && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-red-200">
-              <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-              {overall.incomplete} incomplete (missing data/videos)
-            </span>
-          )}
-          {overall.empty > 0 && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-amber-200">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-              {overall.empty} empty (0 episodes)
-            </span>
-          )}
-        </div>
       </header>
+
+      {/* Corpus dashboard. Replaces the old counts line + health pills: the same
+          facts, plus where the recorded time comes from, per-source growth, and
+          the Hugging Face sync. */}
+      <CorpusDashboard
+        groups={groups}
+        overall={overall}
+        delta={delta}
+        onSelect={onSelect}
+      />
 
       {errors.length > 0 && (
         <div className="mb-6 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">

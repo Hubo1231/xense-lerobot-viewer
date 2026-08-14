@@ -4,6 +4,11 @@
 
 A **local-only** LeRobot dataset visualizer (forked from huggingface/lerobot PR #1055 / @Mishig25). The Hugging Face Hub remote-loading path has been removed: every dataset is read directly from the filesystem via `/api/local-datasets/[encodedPath]/[...filePath]`. URDF/mesh assets for the 3D replay are still fetched from the public HF bucket `lerobot/robot-urdfs`.
 
+**Two deliberate exceptions to "local-only"**, both added for the homepage dashboard — do not let either leak into the browse path:
+
+1. **Manual HF sync.** The homepage's per-source Sync button downloads datasets from the Hub via `POST /api/local-datasets/sync` → `scripts/sync_hf_dataset.py`. It runs **only** on an explicit click, always lists before transferring, and is the single outbound data path. Rendering, parsing and playback never touch the network.
+2. **A written history file.** The homepage records a daily snapshot to `<LOCAL_DATASET_ROOT>/.xense-viewer/corpus-history.json` so it can show growth. Writes are atomic and failure-tolerant; a read-only root just means no "since last snapshot" figures.
+
 ## Package manager
 
 Always use **bun** (`bun install`, `bun dev`, `bun run build`, `bun test`). Never use npm or yarn.
@@ -158,6 +163,20 @@ The **Doctor** tab (`src/components/doctor-panel.tsx`, immediately after Action 
 - `src/lib/doctor/checks/` holds the 11 checks. MP4 files are structurally parsed in TypeScript (`ftyp`/`moov`/`mdat`, video track, dimensions, timing/sample count); this intentionally avoids native codecs and does not claim to decode a frame.
 - The report schema lives in `src/types/doctor.types.ts`. Messages that explicitly name episode IDs feed `FlaggedEpisodesProvider` through its pure extraction helpers.
 - Read-only: Doctor never runs fix/trim commands and never writes dataset files.
+
+### Homepage dashboard (corpus tape, source tabs, HF sync)
+
+The homepage header is a tabbed dashboard: an **All sources** tab holding the corpus tape, plus one tab per top-level source (the directory prefix / HF org) with that source's own figures, its growth since the last snapshot, and its Sync button. Tabs are per _source_, never per task — there are ~4 sources against 231 tasks, and sync is an org-level operation.
+
+- **The tape is proportioned by recorded hours, not episode count.** An episode is an arbitrary slice; sources differ by an order of magnitude in mean episode length (see `avgEpisodeSeconds`), so episode counts are not comparable quantities and hours are. The legend deliberately shows episodes _and_ mean length beside the duration bar so the mismatch is visible.
+- `src/utils/corpusStats.ts` — pure aggregation, tape width allocation (tiny sources are floored to a hoverable minimum, with the borrowed width taken proportionally from the large ones so the bar still sums to 100), and the cyan→violet ramp. That ramp is deliberately not categorical: emerald/red/amber/orange all carry reserved status meanings, and a rainbow here would read as a health bar.
+- `src/utils/corpusHistory.ts` — daily snapshots and deltas. Deltas compare against the **most recent earlier recorded day**, not literal yesterday, because nobody opens the page daily. Negative deltas are preserved, not clamped.
+- `src/lib/corpus-history-store.ts` — atomic `tmp`+`rename` write, swallows its own failures.
+- **HF sync** (`scripts/sync_hf_dataset.py` + `sync/route.ts`): listing always precedes transfer. This gate is not politeness — `lerobot` is a public org with ~188 datasets against 5 held locally, and an unconfirmed sync would pull hundreds of gigabytes. One sync runs at a time, process-wide.
+- **`HF_ENDPOINT` defaults to `https://hf-mirror.com`** — the point is saving proxy/VPN bandwidth, not the mirror itself. Keep the default: if the mirror starts serving again, sync works with no code change.
+  As of 2026-08 on the dev machine it does **not** serve. Every path (`/api/...`, `/resolve/...`, models and datasets alike) answers `308 → huggingface.co`, and `huggingface_hub` refuses that redirect because it carries no `X-Repo-Commit` (reproduced on 0.34.4 and 1.22.0, so it is not a version issue, and not Xet either — `HF_HUB_DISABLE_XET=1` changes nothing).
+  The likely cause is local, not remote: `hf-mirror.com` resolves to `198.18.0.79` on that machine — a transparent-proxy fake-IP — so the mirror is reached through a foreign exit and bounces the caller to the origin. **While that holds the mirror saves no bandwidth at all**, since the bytes come from `huggingface.co` (`198.18.0.80`, also proxied) either way. The fix is a proxy bypass rule for `hf-mirror.com`, not a code change; DNS is hijacked too, so it cannot be verified from inside the box.
+  `scripts/sync_hf_dataset.py` preflights one file and fails with this explanation rather than erroring once per repo. `HF_ENDPOINT=https://huggingface.co` downloads successfully today.
 
 ## Key files
 
