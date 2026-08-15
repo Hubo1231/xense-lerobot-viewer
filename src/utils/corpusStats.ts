@@ -85,13 +85,29 @@ export function computeCorpusStats(groups: DatasetGroup[]): CorpusStats {
   };
 }
 
+/**
+ * An hours figure, always to one decimal, with thousands separators.
+ *
+ * The tenth is not decoration: a day of recording moves a four-figure corpus
+ * total by less than 1%, and rounding to whole hours hid that entirely — the
+ * headline sat on the same integer for days at a time.
+ */
+export function formatHoursValue(hours: number): string {
+  const safe = Number.isFinite(hours) && hours > 0 ? hours : 0;
+  return safe.toLocaleString("en-US", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+}
+
 /** Headline duration. Sub-hour corpora read in minutes so a fresh install shows
  *  "18 min" rather than a stack of leading zeroes. */
 export function formatHours(hours: number): { value: string; unit: string } {
-  if (!Number.isFinite(hours) || hours <= 0) return { value: "0", unit: "h" };
+  if (!Number.isFinite(hours) || hours <= 0) {
+    return { value: formatHoursValue(0), unit: "h" };
+  }
   if (hours < 1) return { value: String(Math.round(hours * 60)), unit: "min" };
-  if (hours < 100) return { value: hours.toFixed(1), unit: "h" };
-  return { value: String(Math.round(hours)), unit: "h" };
+  return { value: formatHoursValue(hours), unit: "h" };
 }
 
 /** Mean episode length, rendered at the precision the magnitude deserves. */

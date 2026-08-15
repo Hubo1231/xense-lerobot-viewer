@@ -7,6 +7,7 @@ import {
   formatCompact,
   formatEpisodeLength,
   formatHours,
+  formatHoursValue,
   tapeColor,
   tapeWidths,
 } from "@/utils/corpusStats";
@@ -111,8 +112,8 @@ export default function CorpusTape({
               onMouseLeave={() => setHovered(null)}
               onFocus={() => setHovered(segment.prefix)}
               onBlur={() => setHovered(null)}
-              title={`${segment.prefix} — ${segment.hours.toFixed(1)} h of ${headline.value}${headline.unit}`}
-              aria-label={`${segment.prefix}: ${segment.hours.toFixed(1)} hours, ${segment.episodes} episodes, ${segment.tasks} tasks`}
+              title={`${segment.prefix} — ${formatHoursValue(segment.hours)} h of ${headline.value}${headline.unit}`}
+              aria-label={`${segment.prefix}: ${formatHoursValue(segment.hours)} hours, ${segment.episodes} episodes, ${segment.tasks} tasks`}
               className="group/band relative h-full overflow-hidden rounded-[3px] transition-[width,opacity] duration-700 ease-out first:rounded-l-md last:rounded-r-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-0)] motion-reduce:transition-none"
               style={{
                 width: revealed ? `${widths[i]}%` : "0%",
@@ -125,7 +126,7 @@ export default function CorpusTape({
                 <span className="pointer-events-none absolute inset-0 flex items-center gap-1.5 px-2.5 text-left text-[11px] font-medium text-slate-950/85">
                   <span className="truncate">{segment.prefix}</span>
                   <span className="tabular shrink-0 text-slate-950/60">
-                    {segment.hours.toFixed(1)} h
+                    {formatHoursValue(segment.hours)} h
                   </span>
                 </span>
               )}

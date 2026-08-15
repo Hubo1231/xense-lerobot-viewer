@@ -15,10 +15,16 @@ export const dynamic = "force-dynamic";
  * Two shapes:
  *   POST { source }                  → fast listing, transfers nothing
  *   POST { source, confirm: true }   → NDJSON stream of the actual download
+ *                                      (add `force: true` to re-fetch repos
+ *                                      already at the remote commit)
  *
  * The listing step is not optional politeness. `lerobot` is a public HF org with
  * ~188 datasets against 5 held locally; syncing it unprompted would pull
  * hundreds of gigabytes. The caller has to see the count and come back.
+ *
+ * The listing also reports `pending` — the repos that genuinely differ from the
+ * local copy — so both the confirmation and the progress counter are scoped to
+ * real work instead of restarting at 1-of-everything on each run.
  */
 
 /** Org names become a path segment under the dataset root, so anything that
@@ -35,7 +41,11 @@ type SyncResult = {
   org: string;
   endpoint: string;
   repos: string[];
+  /** Repos that differ from the local copy — the actual work list. */
+  pending: string[];
   downloaded: number;
+  /** Repos left alone because they already sit at the remote commit. */
+  skipped: number;
   failed: { repo: string; error: string }[];
   listOnly: boolean;
 };
@@ -121,7 +131,11 @@ function runToCompletion(
 }
 
 /** Pipe the script's NDJSON straight through to the client as it arrives. */
-function streamDownload(source: string, root: string): Response {
+function streamDownload(
+  source: string,
+  root: string,
+  force: boolean,
+): Response {
   const encoder = new TextEncoder();
   return new Response(
     new ReadableStream<Uint8Array>({
@@ -147,7 +161,9 @@ function streamDownload(source: string, root: string): Response {
 
         let child: ChildProcessWithoutNullStreams;
         try {
-          child = spawnSync(["--org", source, "--root", root]);
+          const args = ["--org", source, "--root", root];
+          if (force) args.push("--force");
+          child = spawnSync(args);
         } catch (err) {
           send({ type: "error", error: `Failed to launch Python: ${err}` });
           activeSync = null;
@@ -221,7 +237,7 @@ function streamDownload(source: string, root: string): Response {
 }
 
 export async function POST(request: NextRequest): Promise<Response> {
-  let body: { source?: unknown; confirm?: unknown };
+  let body: { source?: unknown; confirm?: unknown; force?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -267,10 +283,14 @@ export async function POST(request: NextRequest): Promise<Response> {
       endpoint: result.endpoint,
       repos: result.repos,
       count: result.repos.length,
+      // `pending` may be absent if an older script is on disk; falling back to
+      // "everything is work" keeps the old behaviour rather than claiming a
+      // fully up-to-date corpus that was never checked.
+      pending: result.pending ?? result.repos,
       confirmRequired: true,
     });
   }
 
   activeSync = { source, startedAt: Date.now() };
-  return streamDownload(source, root);
+  return streamDownload(source, root, body.force === true);
 }

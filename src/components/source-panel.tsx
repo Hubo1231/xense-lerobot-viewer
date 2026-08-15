@@ -32,9 +32,9 @@ type SourcePanelProps = {
 type SyncState =
   | { kind: "idle" }
   | { kind: "listing" }
-  | { kind: "confirm"; repos: string[]; endpoint: string }
+  | { kind: "confirm"; repos: string[]; pending: string[]; endpoint: string }
   | { kind: "running"; progress: SyncProgress }
-  | { kind: "done"; downloaded: number; failed: number }
+  | { kind: "done"; downloaded: number; skipped: number; failed: number }
   | { kind: "error"; message: string };
 
 /** Transferred volume, at the precision the magnitude deserves. */
@@ -73,7 +73,7 @@ function TodayStrip({
   }
 
   const items = [
-    { label: "Hours", value: formatDelta(delta.hours, " h") },
+    { label: "Hours", value: formatDelta(delta.hours, " h", 1) },
     { label: "Episodes", value: formatDelta(delta.episodes) },
     { label: "Tasks", value: formatDelta(delta.tasks) },
   ];
@@ -127,6 +127,7 @@ export default function SourcePanel({
       setSync({
         kind: "confirm",
         repos: listing.repos,
+        pending: listing.pending,
         endpoint: listing.endpoint,
       });
     } catch (err) {
@@ -134,25 +135,29 @@ export default function SourcePanel({
     }
   }, [segment.prefix]);
 
-  const startDownload = useCallback(async () => {
-    setSync({ kind: "running", progress: { phase: "listing" } });
-    const controller = new AbortController();
-    abortRef.current = controller;
-    try {
-      const result = await runSync(
-        segment.prefix,
-        (progress) => setSync({ kind: "running", progress }),
-        controller.signal,
-      );
-      setSync({
-        kind: "done",
-        downloaded: result.downloaded,
-        failed: result.failed.length,
-      });
-    } catch (err) {
-      setSync({ kind: "error", message: (err as Error).message });
-    }
-  }, [segment.prefix]);
+  const startDownload = useCallback(
+    async (force = false) => {
+      setSync({ kind: "running", progress: { phase: "listing" } });
+      const controller = new AbortController();
+      abortRef.current = controller;
+      try {
+        const result = await runSync(
+          segment.prefix,
+          (progress) => setSync({ kind: "running", progress }),
+          { signal: controller.signal, force },
+        );
+        setSync({
+          kind: "done",
+          downloaded: result.downloaded,
+          skipped: result.skipped,
+          failed: result.failed.length,
+        });
+      } catch (err) {
+        setSync({ kind: "error", message: (err as Error).message });
+      }
+    },
+    [segment.prefix],
+  );
 
   const headline = formatHours(segment.hours);
   const issues = counts.incomplete + counts.empty;
@@ -237,7 +242,6 @@ export default function SourcePanel({
         <SyncBlock
           state={sync}
           source={segment.prefix}
-          localTasks={segment.tasks}
           onList={startListing}
           onConfirm={startDownload}
           onCancel={() => {
@@ -253,16 +257,14 @@ export default function SourcePanel({
 function SyncBlock({
   state,
   source,
-  localTasks,
   onList,
   onConfirm,
   onCancel,
 }: {
   state: SyncState;
   source: string;
-  localTasks: number;
   onList: () => void;
-  onConfirm: () => void;
+  onConfirm: (force?: boolean) => void;
   onCancel: () => void;
 }) {
   if (state.kind === "idle" || state.kind === "error") {
@@ -294,34 +296,61 @@ function SyncBlock({
   }
 
   if (state.kind === "confirm") {
-    const newCount = state.repos.length - localTasks;
+    // The figure that matters is what differs, not what the org holds: a repo
+    // already sitting at the remote commit is not work, and counting it as work
+    // is what made every run look like a fresh full sync.
+    const total = state.repos.length;
+    const pending = state.pending.length;
+    const current = total - pending;
     return (
       <div className="space-y-2.5">
-        <p className="text-xs text-[var(--text-primary)]">
-          <span className="tabular font-semibold">{state.repos.length}</span>{" "}
-          datasets on the Hub for {source}
-          {newCount > 0 && (
-            <>
-              {" — "}
-              <span className="tabular font-semibold text-amber-300">
-                {newCount} more
-              </span>{" "}
-              than the {localTasks} held locally
-            </>
-          )}
-          .
-        </p>
+        {pending === 0 ? (
+          <p className="text-xs text-[var(--text-primary)]">
+            All <span className="tabular font-semibold">{total}</span> datasets
+            for {source} are already at the latest commit locally.
+          </p>
+        ) : (
+          <p className="text-xs text-[var(--text-primary)]">
+            <span className="tabular font-semibold text-amber-300">
+              {pending}
+            </span>{" "}
+            of <span className="tabular font-semibold">{total}</span> datasets
+            for {source} need updating
+            {current > 0 && (
+              <>
+                {" — the other "}
+                <span className="tabular">{current}</span> already match
+              </>
+            )}
+            .
+          </p>
+        )}
         <p className="text-[11px] text-[var(--text-faint)]">
-          Transfers the full contents of each, including video. Via{" "}
-          <span className="font-mono">{state.endpoint}</span>.
+          {pending > 0 && (
+            <>Transfers the full contents of each, including video. </>
+          )}
+          Via <span className="font-mono">{state.endpoint}</span>.
         </p>
         <div className="flex flex-wrap gap-2 pt-0.5">
+          {pending > 0 && (
+            <button
+              type="button"
+              onClick={() => onConfirm(false)}
+              className="rounded-md bg-[var(--accent)] px-3.5 py-1.5 text-xs font-semibold text-slate-950 transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
+            >
+              Download {pending} dataset{pending === 1 ? "" : "s"}
+            </button>
+          )}
+          {/* Escape hatch: the commit check reads the snapshot marker plus file
+              sizes, so a copy corrupted in a way that preserves both still
+              needs a way to be refetched. */}
           <button
             type="button"
-            onClick={onConfirm}
-            className="rounded-md bg-[var(--accent)] px-3.5 py-1.5 text-xs font-semibold text-slate-950 transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
+            onClick={() => onConfirm(true)}
+            title="Ignore the local commit check and fetch every dataset again"
+            className="rounded-md border border-white/10 px-3.5 py-1.5 text-xs font-medium text-[var(--text-muted)] transition-colors hover:border-[var(--accent)]/50 hover:text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
           >
-            Download {state.repos.length} datasets
+            Re-check all {total}
           </button>
           <button
             type="button"
@@ -413,14 +442,28 @@ function SyncBlock({
   return (
     <div className="space-y-1.5">
       <p className="text-xs text-emerald-300">
-        Downloaded <span className="tabular">{state.downloaded}</span> datasets
-        {state.failed > 0 && (
-          <span className="text-amber-300">
-            {" "}
-            · <span className="tabular">{state.failed}</span> failed
-          </span>
+        {state.downloaded === 0 && state.failed === 0 ? (
+          <>Already up to date — nothing to transfer.</>
+        ) : (
+          <>
+            Downloaded <span className="tabular">{state.downloaded}</span>{" "}
+            dataset{state.downloaded === 1 ? "" : "s"}
+            {state.skipped > 0 && (
+              <span className="text-[var(--text-muted)]">
+                {" "}
+                · <span className="tabular">{state.skipped}</span> already
+                current
+              </span>
+            )}
+            {state.failed > 0 && (
+              <span className="text-amber-300">
+                {" "}
+                · <span className="tabular">{state.failed}</span> failed
+              </span>
+            )}
+            .
+          </>
         )}
-        .
       </p>
       <p className="text-[11px] text-[var(--text-faint)]">
         Reload the page to pick up the new datasets.

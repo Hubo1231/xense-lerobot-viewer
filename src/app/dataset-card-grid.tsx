@@ -9,8 +9,15 @@ import type {
 } from "@/lib/local-datasets-discovery";
 import type { DatasetTags } from "@/lib/dataset-tags";
 import DatasetTagsEditor from "@/components/dataset-tags-editor";
+import {
+  DeleteDatasetDialog,
+  TrashStrip,
+} from "@/components/dataset-trash-controls";
 import HoverPlayVideo from "@/components/hover-play-video";
-import { getDatasetTaskName } from "@/utils/datasetGrouping";
+import {
+  compareDatasetsBySize,
+  getDatasetTaskName,
+} from "@/utils/datasetGrouping";
 
 type DatasetCardGridProps = {
   root: string;
@@ -83,16 +90,26 @@ export default function DatasetCardGrid({
   const [editingDatasetKey, setEditingDatasetKey] = useState<string | null>(
     null,
   );
+  const [deletingDatasetKey, setDeletingDatasetKey] = useState<string | null>(
+    null,
+  );
+  // Datasets moved to the trash in this session. The server discovery is
+  // `force-dynamic`, but router.refresh() is a round trip — dropping the card
+  // locally keeps the grid honest in the meantime.
+  const [trashedKeys, setTrashedKeys] = useState<string[]>([]);
+  const [trashVersion, setTrashVersion] = useState(0);
 
   // Apply overrides (from in-page edits) on top of server-loaded tags.
   const datasetsWithLiveTags = useMemo(
     () =>
-      datasets.map((ds) =>
-        tagOverrides[ds.encodedPath]
-          ? { ...ds, tags: tagOverrides[ds.encodedPath] }
-          : ds,
-      ),
-    [datasets, tagOverrides],
+      datasets
+        .filter((ds) => !trashedKeys.includes(ds.encodedPath))
+        .map((ds) =>
+          tagOverrides[ds.encodedPath]
+            ? { ...ds, tags: tagOverrides[ds.encodedPath] }
+            : ds,
+        ),
+    [datasets, tagOverrides, trashedKeys],
   );
 
   const robotTypes = useMemo(() => {
@@ -134,9 +151,11 @@ export default function DatasetCardGrid({
     [taskCounts],
   );
 
+  // Biggest first (frames, then episodes), so the top-left card is always the
+  // most substantial task in the category and the order survives filtering.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return datasetsWithLiveTags.filter((ds) => {
+    const matches = datasetsWithLiveTags.filter((ds) => {
       if (selectedRobot !== "all" && ds.robot_type !== selectedRobot) {
         return false;
       }
@@ -159,10 +178,15 @@ export default function DatasetCardGrid({
         ds.tags.objects.some((o) => o.toLowerCase().includes(q))
       );
     });
+    return matches.sort(compareDatasetsBySize);
   }, [datasetsWithLiveTags, query, selectedRobot, healthFilter, taskFilter]);
 
   const editingDataset = editingDatasetKey
     ? (datasetsWithLiveTags.find((d) => d.encodedPath === editingDatasetKey) ??
+      null)
+    : null;
+  const deletingDataset = deletingDatasetKey
+    ? (datasetsWithLiveTags.find((d) => d.encodedPath === deletingDatasetKey) ??
       null)
     : null;
 
@@ -194,8 +218,8 @@ export default function DatasetCardGrid({
         <p className="mt-2 text-sm text-slate-400">
           Browsing <span className="font-mono text-cyan-200/90">{root}</span>
           <span className="mx-2 text-slate-600">·</span>
-          {datasets.length} task{datasets.length === 1 ? "" : "s"} in this
-          dataset
+          {datasetsWithLiveTags.length} task
+          {datasetsWithLiveTags.length === 1 ? "" : "s"} in this dataset
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">
@@ -321,9 +345,11 @@ export default function DatasetCardGrid({
             onChange={(e) => setSelectedRobot(e.target.value)}
             className="rounded-md border border-white/10 bg-[var(--surface-1)]/60 px-3 py-2 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none"
           >
-            <option value="all">All robots ({datasets.length})</option>
+            <option value="all">
+              All robots ({datasetsWithLiveTags.length})
+            </option>
             {robotTypes.map((robot) => {
-              const count = datasets.filter(
+              const count = datasetsWithLiveTags.filter(
                 (d) => d.robot_type === robot,
               ).length;
               return (
@@ -337,7 +363,7 @@ export default function DatasetCardGrid({
         <div className="inline-flex overflow-hidden rounded-md border border-white/10 text-xs">
           {(
             [
-              { key: "all", label: `All (${datasets.length})` },
+              { key: "all", label: `All (${datasetsWithLiveTags.length})` },
               { key: "ok", label: `Healthy (${healthCounts.ok})` },
               { key: "issues", label: `Issues (${healthCounts.issues})` },
             ] as { key: HealthFilter; label: string }[]
@@ -357,6 +383,8 @@ export default function DatasetCardGrid({
           ))}
         </div>
       </div>
+
+      <TrashStrip refreshKey={trashVersion} />
 
       {filtered.length === 0 ? (
         <div className="rounded-md border border-white/10 bg-[var(--surface-1)]/40 p-10 text-center text-slate-400">
@@ -403,28 +431,55 @@ export default function DatasetCardGrid({
                 )}
                 <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-t from-black/85 via-black/40 to-transparent" />
 
-                {/* Edit-tags button — top-left, only shows on card hover */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setEditingDatasetKey(ds.encodedPath);
-                  }}
-                  title="Edit tags (task, scene, objects)"
-                  aria-label={`Edit tags for ${ds.relativePath}`}
-                  className="absolute left-2 top-2 z-20 inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium text-slate-200 opacity-0 backdrop-blur-sm transition-opacity transition-colors hover:bg-cyan-500/90 hover:text-white group-hover:opacity-100"
-                >
-                  <svg
-                    className="h-3 w-3"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    aria-hidden
+                {/* Card actions — top-left, only show on card hover */}
+                <div className="absolute left-2 top-2 z-20 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setEditingDatasetKey(ds.encodedPath);
+                    }}
+                    title="Edit tags (task, scene, objects)"
+                    aria-label={`Edit tags for ${ds.relativePath}`}
+                    className="inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium text-slate-200 backdrop-blur-sm transition-colors hover:bg-cyan-500/90 hover:text-white"
                   >
-                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793 4 13.172V16h2.828l7.379-7.379-2.828-2.828z" />
-                  </svg>
-                  Tags
-                </button>
+                    <svg
+                      className="h-3 w-3"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden
+                    >
+                      <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793 4 13.172V16h2.828l7.379-7.379-2.828-2.828z" />
+                    </svg>
+                    Tags
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDeletingDatasetKey(ds.encodedPath);
+                    }}
+                    title="Delete this dataset (moves it to the trash)"
+                    aria-label={`Delete ${ds.relativePath}`}
+                    className="inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium text-slate-200 backdrop-blur-sm transition-colors hover:bg-red-500/90 hover:text-white"
+                  >
+                    <svg
+                      className="h-3 w-3"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M8.5 2a1 1 0 00-.95.68L7.2 3.75H4.5a.75.75 0 000 1.5h11a.75.75 0 000-1.5h-2.7l-.35-1.07A1 1 0 0011.5 2h-3zM5.75 6.75h8.5l-.6 8.4A2 2 0 0111.66 17H8.34a2 2 0 01-1.99-1.85l-.6-8.4z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    Delete
+                  </button>
+                </div>
 
                 {/* Health corner badge — top-right */}
                 <div
@@ -589,6 +644,21 @@ export default function DatasetCardGrid({
               [editingDataset.encodedPath]: updated,
             }));
             setEditingDatasetKey(null);
+            router.refresh();
+          }}
+        />
+      )}
+
+      {deletingDataset && (
+        <DeleteDatasetDialog
+          relativePath={deletingDataset.relativePath}
+          encodedPath={deletingDataset.encodedPath}
+          episodes={deletingDataset.total_episodes}
+          onClose={() => setDeletingDatasetKey(null)}
+          onDeleted={() => {
+            setTrashedKeys((prev) => [...prev, deletingDataset.encodedPath]);
+            setDeletingDatasetKey(null);
+            setTrashVersion((v) => v + 1);
             router.refresh();
           }}
         />
