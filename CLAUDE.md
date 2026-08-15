@@ -71,6 +71,7 @@ The browser URL for episodes is `/_local/<base64url-encoded-relative-path>/episo
 - `src/app/api/local-datasets/[encodedPath]/parquet/route.ts` — `GET` lists every `.parquet` in the dataset (stat only); `?episode=N` also resolves that episode's data file + row range
 - `src/app/api/local-datasets/[encodedPath]/parquet/read/route.ts` — `GET` reads one parquet server-side: `?meta=1` for schema only, otherwise `?offset=&limit=&col=…` for a page of rows
 - `src/app/api/local-datasets/[encodedPath]/doctor/route.ts` — `POST` runs the read-only native TypeScript Doctor; no Python subprocess or external service
+- `src/app/api/local-datasets/[encodedPath]/trash/route.ts` — `POST` moves one dataset into `<root>/.xense-viewer/trash/`; `src/app/api/local-datasets/trash/route.ts` — `GET` lists the trash, `DELETE` empties it
 
 Path resolution for all of these goes through `src/lib/local-dataset-paths.ts` (`resolveDatasetRoot` / `resolveInsideDataset` / `statDatasetFile`) — the traversal check lives there, not in each route. `resolveInsideDataset` is pure and catches only **lexical** escapes (`..`, absolute segments); `statDatasetFile` additionally `realpath`s both the dataset directory and the target, so a **symlink** planted inside a dataset can't read outside it. A dataset reached through a symlinked root still works — but a deliberately out-of-tree `videos/` symlink is refused, by design.
 
@@ -94,6 +95,15 @@ Three versions are supported. Version is detected from `meta/info.json` → `cod
 - `getEpisodeDataV3()` for v3.0
 
 Note: `src/app/[org]/[dataset]/` no longer has `page.tsx` files — those were the cloud-route wrappers. The directory is kept because it still houses `episode-viewer.tsx`, `fetch-data.ts`, `error.tsx`, `actions.ts`, and tests. The `_local` route is the only public entry into `EpisodeViewer`.
+
+### Deleting datasets (trash, not `rm`)
+
+The dataset card's hover **Delete** button moves the directory to `<LOCAL_DATASET_ROOT>/.xense-viewer/trash/<stamp>__<flattened-path>/` plus a sibling `.json` manifest — a rename, never a recursive delete. Re-downloading a mistake costs tens of gigabytes over a link that measures in hundreds of kB/s; a rename costs a `mv` to undo. Nothing else in the app destroys dataset files.
+
+- `src/lib/local-dataset-trash.ts` guards in order: inside the root lexically → is a directory → carries `meta/info.json` (so a stray encoded path cannot rename an arbitrary directory) → still inside the root after `realpath`. `EXDEV` is reported rather than silently turned into a copy.
+- The scanner already skips dot-directories, so trashed datasets disappear from discovery with no extra filtering.
+- Space is **not** reclaimed until the trash is emptied. `TrashStrip` (above the card grid) shows the count and bytes still on disk and is the only control that calls the destructive `emptyTrash`; it asks a second time.
+- Naming lives in the pure, unit-tested `src/utils/datasetTrash.ts` — the entry name can never contain a separator, a leading dot, or `..`.
 
 ### Health probing
 
@@ -169,10 +179,12 @@ The **Doctor** tab (`src/components/doctor-panel.tsx`, immediately after Action 
 The homepage header is a tabbed dashboard: an **All sources** tab holding the corpus tape, plus one tab per top-level source (the directory prefix / HF org) with that source's own figures, its growth since the last snapshot, and its Sync button. Tabs are per _source_, never per task — there are ~4 sources against 231 tasks, and sync is an org-level operation.
 
 - **The tape is proportioned by recorded hours, not episode count.** An episode is an arbitrary slice; sources differ by an order of magnitude in mean episode length (see `avgEpisodeSeconds`), so episode counts are not comparable quantities and hours are. The legend deliberately shows episodes _and_ mean length beside the duration bar so the mismatch is visible.
+- **Card grids are ordered largest-first**, both levels: `compareDatasetsBySize` in `src/utils/datasetGrouping.ts` sorts on `total_frames` desc → `total_episodes` desc → path, and `groupDatasetsByPrefix` sorts the category cards on the same summed figures. Frames lead for the same reason the tape is proportioned by hours: episode counts are not comparable across sources. A group's card art is the thumbnail of its largest dataset that has one.
 - `src/utils/corpusStats.ts` — pure aggregation, tape width allocation (tiny sources are floored to a hoverable minimum, with the borrowed width taken proportionally from the large ones so the bar still sums to 100), and the cyan→violet ramp. That ramp is deliberately not categorical: emerald/red/amber/orange all carry reserved status meanings, and a rainbow here would read as a health bar.
 - `src/utils/corpusHistory.ts` — daily snapshots and deltas. Deltas compare against the **most recent earlier recorded day**, not literal yesterday, because nobody opens the page daily. Negative deltas are preserved, not clamped.
 - `src/lib/corpus-history-store.ts` — atomic `tmp`+`rename` write, swallows its own failures.
 - **HF sync** (`scripts/sync_hf_dataset.py` + `sync/route.ts`): listing always precedes transfer. This gate is not politeness — `lerobot` is a public org with ~188 datasets against 5 held locally, and an unconfirmed sync would pull hundreds of gigabytes. One sync runs at a time, process-wide.
+- **Sync is incremental, and the counter says so.** The org listing asks for `expand=["sha"]`, and a repo is skipped when the remote commit is already present as `<dataset>/.cache/huggingface/trees/<commit>.json` **and** every file that tree lists exists at the listed size. The size check is what catches a copy that was deleted, truncated, or rewritten in place — `export_subtasks.py` does exactly that to the data parquets, so a subtask-compiled dataset reads as pending and a sync will overwrite it. `pending` (not `repos`) is the work list, so the progress reads `1/M` of what actually differs rather than `1/N` of the whole org; `--force` / the panel's "Re-check all" ignores the check. Do not reintroduce a plain "iterate the whole org" loop: `snapshot_download` skips unchanged bytes, but only after a per-file metadata round trip, which is minutes of nothing across a large org.
 - **`HF_ENDPOINT` defaults to `https://hf-mirror.com`** — the point is saving proxy/VPN bandwidth, not the mirror itself. Keep the default: if the mirror starts serving again, sync works with no code change.
   As of 2026-08 on the dev machine it does **not** serve. Every path (`/api/...`, `/resolve/...`, models and datasets alike) answers `308 → huggingface.co`, and `huggingface_hub` refuses that redirect because it carries no `X-Repo-Commit` (reproduced on 0.34.4 and 1.22.0, so it is not a version issue, and not Xet either — `HF_HUB_DISABLE_XET=1` changes nothing).
   The likely cause is local, not remote: `hf-mirror.com` resolves to `198.18.0.79` on that machine — a transparent-proxy fake-IP — so the mirror is reached through a foreign exit and bounces the caller to the origin. **While that holds the mirror saves no bandwidth at all**, since the bytes come from `huggingface.co` (`198.18.0.80`, also proxied) either way. The fix is a proxy bypass rule for `hf-mirror.com`, not a code change; DNS is hijacked too, so it cannot be verified from inside the box.
