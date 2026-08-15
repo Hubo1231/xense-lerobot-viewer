@@ -46,6 +46,7 @@ export interface EpisodeData {
   episodeId: number;
   videosInfo: VideoInfo[];
   chartDataGroups: ChartDataGroup[];
+  velocityChartDataGroups: ChartDataGroup[];
   episodes: number[];
   ignoredColumns: string[];
   duration: number;

@@ -25,6 +25,7 @@ import {
   assignEpisodesToBins,
   type HistogramBinning,
 } from "@/utils/episodeLengthHistogram";
+import { buildPoseVelocityChartGroups } from "@/utils/poseVelocity";
 import type { VideoInfo, AdjacentEpisodeVideos } from "@/types";
 
 const SERIES_NAME_DELIMITER = CHART_CONFIG.SERIES_NAME_DELIMITER;
@@ -118,6 +119,7 @@ export type EpisodeData = {
   episodeId: number;
   videosInfo: VideoInfo[];
   chartDataGroups: ChartRow[][];
+  velocityChartDataGroups: ChartRow[][];
   flatChartData: Record<string, number>[];
   episodes: number[];
   ignoredColumns: string[];
@@ -679,6 +681,10 @@ async function getEpisodeDataV2(
     return obj;
   });
   const sampledChartData = evenlySampleArray(chartData, MAX_EPISODE_POINTS);
+  const velocityChartDataGroups = buildPoseVelocityChartGroups(chartData, {
+    sourceTimestamps: chartData.map((row) => row.timestamp),
+    fps: info.fps,
+  }).map((group) => evenlySampleArray(group, MAX_EPISODE_POINTS));
 
   // List of columns that are ignored (e.g., 2D or 3D data)
   const ignoredColumns = Object.entries(info.features)
@@ -714,6 +720,7 @@ async function getEpisodeDataV2(
     episodeId,
     videosInfo,
     chartDataGroups,
+    velocityChartDataGroups,
     flatChartData: sampledChartData,
     episodes,
     ignoredColumns,
@@ -761,6 +768,7 @@ async function getEpisodeDataV3(
   // Load episode data for charts
   const {
     chartDataGroups,
+    velocityChartDataGroups,
     flatChartData,
     ignoredColumns,
     task,
@@ -777,6 +785,7 @@ async function getEpisodeDataV3(
     episodeId,
     videosInfo,
     chartDataGroups,
+    velocityChartDataGroups,
     flatChartData,
     episodes,
     ignoredColumns,
@@ -795,6 +804,7 @@ async function loadEpisodeDataV3(
   episodeMetadata: EpisodeMetadataV3,
 ): Promise<{
   chartDataGroups: ChartRow[][];
+  velocityChartDataGroups: ChartRow[][];
   flatChartData: Record<string, number>[];
   ignoredColumns: string[];
   task?: string;
@@ -899,6 +909,7 @@ async function loadEpisodeDataV3(
     if (episodeData.length === 0) {
       return {
         chartDataGroups: [],
+        velocityChartDataGroups: [],
         flatChartData: [],
         ignoredColumns: [],
         task: undefined,
@@ -908,8 +919,12 @@ async function loadEpisodeDataV3(
     }
 
     // Convert to the same format as v2.x for compatibility with existing chart code
-    const { chartDataGroups, flatChartData, ignoredColumns } =
-      processEpisodeDataForCharts(episodeData, info, episodeMetadata);
+    const {
+      chartDataGroups,
+      velocityChartDataGroups,
+      flatChartData,
+      ignoredColumns,
+    } = processEpisodeDataForCharts(episodeRows, info, episodeMetadata);
 
     // Prefer the authoritative `tasks` list on the episode's own metadata
     // (v3.0 stores it as list[str] — see lerobot dataset_metadata.save_episode).
@@ -988,6 +1003,7 @@ async function loadEpisodeDataV3(
 
     return {
       chartDataGroups,
+      velocityChartDataGroups,
       flatChartData,
       ignoredColumns,
       task,
@@ -997,6 +1013,7 @@ async function loadEpisodeDataV3(
   } catch {
     return {
       chartDataGroups: [],
+      velocityChartDataGroups: [],
       flatChartData: [],
       ignoredColumns: [],
       task: undefined,
@@ -1092,6 +1109,7 @@ function processEpisodeDataForCharts(
   episodeMetadata?: EpisodeMetadataV3,
 ): {
   chartDataGroups: ChartRow[][];
+  velocityChartDataGroups: ChartRow[][];
   flatChartData: Record<string, number>[];
   ignoredColumns: string[];
 } {
@@ -1252,6 +1270,15 @@ function processEpisodeDataForCharts(
     return obj;
   });
 
+  const sourceTimestamps = episodeData.map(
+    (row) => toFiniteNumber(row.timestamp) ?? Number.NaN,
+  );
+  const velocityChartDataGroups = buildPoseVelocityChartGroups(chartData, {
+    sourceTimestamps,
+    fps: info.fps,
+  }).map((group) => evenlySampleArray(group, MAX_EPISODE_POINTS));
+  const sampledChartData = evenlySampleArray(chartData, MAX_EPISODE_POINTS);
+
   // List of columns that are ignored (now we handle 2D data by flattening)
   const ignoredColumns = [
     ...Object.entries(info.features)
@@ -1265,10 +1292,10 @@ function processEpisodeDataForCharts(
   ];
 
   // Process chart data into organized groups using utility function
-  const chartGroups = processChartDataGroups(seriesNames, chartData);
+  const chartGroups = processChartDataGroups(seriesNames, sampledChartData);
 
   const chartDataGroups = chartGroups.map((group) =>
-    chartData.map((row) => {
+    sampledChartData.map((row) => {
       const grouped = groupRowBySuffix(pick(row, [...group, "timestamp"]));
       // Ensure timestamp is always a number at the top level
       return {
@@ -1279,7 +1306,12 @@ function processEpisodeDataForCharts(
     }),
   );
 
-  return { chartDataGroups, flatChartData: chartData, ignoredColumns };
+  return {
+    chartDataGroups,
+    velocityChartDataGroups,
+    flatChartData: sampledChartData,
+    ignoredColumns,
+  };
 }
 
 // Video info extraction with segmentation for v3.0

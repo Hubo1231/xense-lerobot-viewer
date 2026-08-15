@@ -283,6 +283,81 @@ export function countStandardizedJumps(
   return count;
 }
 
+export interface StandardizedDimensionJump {
+  /** Index of the current frame (the jump is between index - 1 and index). */
+  index: number;
+  /** Dimensions whose absolute diff z-score crossed the reporting threshold. */
+  dimensions: number[];
+  /** Absolute per-dimension z-scores for the current frame. */
+  zScores: number[];
+}
+
+/**
+ * Find abrupt changes in individual dimensions without changing the original
+ * Python-compatible mean-z-score jump check above.
+ *
+ * A frame is considered interesting when at least `minDimensions` dimensions
+ * cross `threshold`, or when one dimension crosses `extremeThreshold`. The
+ * latter catches catastrophic single-channel jumps while the former avoids
+ * treating ordinary one-dimensional noise as a coordinated discontinuity.
+ * `reportThreshold` may be lower so related dimensions are included in the
+ * diagnostic message after a severe event has already been selected.
+ */
+export function findStandardizedDimensionJumps(
+  matrix: number[][],
+  standardDeviations: number[],
+  options: {
+    threshold?: number;
+    minDimensions?: number;
+    extremeThreshold?: number;
+    reportThreshold?: number;
+  } = {},
+): StandardizedDimensionJump[] {
+  const threshold = options.threshold ?? 8;
+  const minDimensions = Math.max(1, Math.floor(options.minDimensions ?? 2));
+  const extremeThreshold = options.extremeThreshold ?? Number.POSITIVE_INFINITY;
+  const reportThreshold = options.reportThreshold ?? threshold;
+  const jumps: StandardizedDimensionJump[] = [];
+
+  for (let index = 1; index < matrix.length; index += 1) {
+    const current = matrix[index];
+    const previous = matrix[index - 1];
+    const zScores = new Array<number>(current.length);
+    const dimensions: number[] = [];
+    let extreme = false;
+    let finite = true;
+
+    for (let dimension = 0; dimension < current.length; dimension += 1) {
+      const currentValue = current[dimension];
+      const previousValue = previous[dimension];
+      if (!Number.isFinite(currentValue) || !Number.isFinite(previousValue)) {
+        finite = false;
+        break;
+      }
+      const deviation = standardDeviations[dimension];
+      const safeDeviation =
+        Number.isFinite(deviation) && deviation > 0 ? deviation : 1;
+      const zScore = Math.abs((currentValue - previousValue) / safeDeviation);
+      zScores[dimension] = zScore;
+      if (zScore > threshold) dimensions.push(dimension);
+      if (zScore > extremeThreshold) extreme = true;
+    }
+
+    if (finite && (dimensions.length >= minDimensions || extreme)) {
+      jumps.push({
+        index,
+        dimensions: zScores
+          .map((zScore, dimension) =>
+            zScore > reportThreshold ? dimension : -1,
+          )
+          .filter((dimension) => dimension >= 0),
+        zScores,
+      });
+    }
+  }
+  return jumps;
+}
+
 export function mean(values: number[]): number {
   return values.length === 0
     ? Number.NaN

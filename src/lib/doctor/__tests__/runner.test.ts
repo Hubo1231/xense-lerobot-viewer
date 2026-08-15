@@ -24,10 +24,27 @@ describe("Doctor runner progress", () => {
         }),
       );
       const progress: DoctorProgress[] = [];
-      await runTypeScriptDoctor(root, {
+      const result = await runTypeScriptDoctor(root, {
         maxEpisodes: 1,
+        dimensionJumpThresholds: {
+          dimensionZThreshold: 12.5,
+          extremeSingleDimensionZ: 21,
+        },
+        speedThresholds: {
+          linearMetersPerSecond: 2.25,
+          angularDegreesPerSecond: 240,
+        },
         checks: ["metadata", "episodes"],
         onProgress: (event) => progress.push(event),
+      });
+
+      expect(result.execution.dimension_jump_thresholds).toEqual({
+        dimensionZThreshold: 12.5,
+        extremeSingleDimensionZ: 21,
+      });
+      expect(result.execution.speed_thresholds).toEqual({
+        linearMetersPerSecond: 2.25,
+        angularDegreesPerSecond: 240,
       });
 
       expect(progress[0]).toMatchObject({

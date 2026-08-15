@@ -7,6 +7,8 @@ import {
   checkTemporal,
 } from "../checks/core";
 import { checkPerEpisode } from "../checks/anomalies";
+import { checkDimensionJumps } from "../checks/jumps";
+import { checkSpeedLimits } from "../checks/speeds";
 import { getColumnDiffSummary, getColumnMatrices } from "../analysis";
 import { countStandardizedJumps, summaryStandardDeviations } from "../math";
 
@@ -220,5 +222,117 @@ describe("native Doctor checks", () => {
         message.message.includes("more flagged episodes"),
       ),
     ).toBe(false);
+  });
+
+  it("reports coordinated state jumps without changing the action check", () => {
+    const dataset = datasetFixture();
+    dataset.info!.features["observation.state"] = {
+      dtype: "float32",
+      shape: [2],
+      names: ["left_tcp.x", "left_tcp.y"],
+    };
+    dataset.episodesData[0].columns["observation.state"] = Array.from(
+      { length: 5_000 },
+      (_, frame) => (frame === 2_500 ? [100, 100] : [0, 0]),
+    );
+
+    const result = checkDimensionJumps(dataset);
+    expect(result.severity).toBe("WARN");
+    expect(
+      result.messages.some(
+        (message) =>
+          message.message.includes("Episode 0") &&
+          message.message.includes("left_tcp.x") &&
+          message.message.includes("left_tcp.y"),
+      ),
+    ).toBe(true);
+  });
+
+  it("uses configurable thresholds for dimension-level jumps", () => {
+    const dataset = datasetFixture();
+    dataset.episodesData[0].columns.action = Array.from(
+      { length: 5_000 },
+      () => [0, 0],
+    );
+    dataset.episodesData[0].columns["observation.state"] = Array.from(
+      { length: 5_000 },
+      (_, frame) => (frame === 2_500 ? [100, 100] : [0, 0]),
+    );
+
+    const strict = checkDimensionJumps(dataset, {
+      dimensionZThreshold: 60,
+      extremeSingleDimensionZ: 70,
+    });
+    expect(strict.severity).toBe("PASS");
+
+    const sensitive = checkDimensionJumps(dataset, {
+      dimensionZThreshold: 45,
+      extremeSingleDimensionZ: 70,
+    });
+    expect(sensitive.severity).toBe("WARN");
+    expect(
+      sensitive.messages.some((message) =>
+        message.message.includes(">45σ or one >70σ"),
+      ),
+    ).toBe(true);
+  });
+
+  it("detects per-axis TCP linear and world-frame angular speed limits", () => {
+    const dataset = datasetFixture();
+    dataset.info!.features.action = {
+      dtype: "float32",
+      shape: [9],
+      names: [
+        "left_tcp.x",
+        "left_tcp.y",
+        "left_tcp.z",
+        "left_tcp.r1",
+        "left_tcp.r2",
+        "left_tcp.r3",
+        "left_tcp.r4",
+        "left_tcp.r5",
+        "left_tcp.r6",
+      ],
+    };
+    dataset.episodesData[0] = {
+      episodeIndex: 0,
+      length: 2,
+      columns: {
+        timestamp: [0, 0.25],
+        frame_index: [0, 1],
+        action: [
+          [0, 0, 0, 1, 0, 0, 0, 1, 0],
+          [0.5, 0, 0, 0, 1, 0, -1, 0, 0],
+        ],
+      },
+    };
+
+    const result = checkSpeedLimits(dataset);
+    expect(result.severity).toBe("WARN");
+    expect(
+      result.messages.some(
+        (message) =>
+          message.message.includes("Episode 0") &&
+          message.message.includes("vx 2.000 m/s") &&
+          message.message.includes("ωz 360.0 deg/s") &&
+          message.message.includes("limit 270 deg/s") &&
+          message.message.includes("@0.25s"),
+      ),
+    ).toBe(true);
+    expect(
+      result.messages.some((message) =>
+        message.message.includes("episode(s) contain"),
+      ),
+    ).toBe(false);
+    expect(
+      result.messages.some((message) => message.message.startsWith("Detected")),
+    ).toBe(false);
+
+    const relaxed = checkSpeedLimits(dataset, {
+      linearMetersPerSecond: 2.1,
+      angularDegreesPerSecond: 370,
+    });
+    expect(relaxed.severity).toBe("PASS");
+    expect(relaxed.messages).toHaveLength(1);
   });
 });

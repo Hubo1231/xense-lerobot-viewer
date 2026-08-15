@@ -23,8 +23,11 @@ type ChartRow = Record<string, number | Record<string, number>>;
 
 type DataGraphProps = {
   data: ChartRow[][];
+  velocityData?: ChartRow[][];
   onChartsReady?: () => void;
 };
+
+type EpisodeGraphMode = "position" | "velocity";
 
 const SERIES_NAME_DELIMITER = " | ";
 
@@ -42,6 +45,34 @@ const CHART_COLORS = [
   "#6366f1",
   "#84cc16",
 ];
+
+const DIRECTION_COLORS = {
+  x: "#ef4444",
+  y: "#22c55e",
+  z: "#3b82f6",
+} as const;
+
+type VelocityDirection = keyof typeof DIRECTION_COLORS;
+
+function velocitySeriesInfo(key: string): {
+  source: string;
+  direction: VelocityDirection;
+} | null {
+  const parts = key.split(SERIES_NAME_DELIMITER);
+  const source = parts.length > 1 ? (parts.at(-1) ?? "") : "";
+  const descriptor = parts.length > 1 ? parts.slice(0, -1).join(" ") : key;
+  const match = /(?:^|[.\s·])(?:v|ω)([xyz])(?:\s|\(|$)/.exec(descriptor);
+  if (!match) return null;
+  return {
+    source,
+    direction: match[1] as VelocityDirection,
+  };
+}
+
+function formatLegendValue(value: number): string {
+  const sign = value < 0 ? "-" : "\u2007";
+  return `${sign}${Math.abs(value).toFixed(2)}`;
+}
 
 function mergeGroups(data: ChartRow[][]): ChartRow[] {
   if (data.length <= 1) return data[0] ?? [];
@@ -66,26 +97,74 @@ function mergeGroups(data: ChartRow[][]): ChartRow[] {
 }
 
 export const DataRecharts = React.memo(
-  ({ data, onChartsReady }: DataGraphProps) => {
+  ({ data, velocityData = [], onChartsReady }: DataGraphProps) => {
     const [hoveredTime, setHoveredTime] = useState<number | null>(null);
     const [expanded, setExpanded] = useState(false);
+    const [mode, setMode] = useState<EpisodeGraphMode>("position");
+    const hasVelocityData = velocityData.length > 0;
+    const activeData = mode === "velocity" ? velocityData : data;
 
     useEffect(() => {
       if (typeof onChartsReady === "function") onChartsReady();
     }, [onChartsReady]);
 
+    useEffect(() => {
+      if (mode === "velocity" && !hasVelocityData) setMode("position");
+    }, [hasVelocityData, mode]);
+
     const combinedData = useMemo(
-      () => (expanded ? mergeGroups(data) : []),
-      [data, expanded],
+      () => (expanded ? mergeGroups(activeData) : []),
+      [activeData, expanded],
     );
 
     if (!Array.isArray(data) || data.length === 0) return null;
 
+    const selectMode = (nextMode: EpisodeGraphMode) => {
+      if (nextMode === "velocity" && !hasVelocityData) return;
+      setMode(nextMode);
+      setExpanded(false);
+      setHoveredTime(null);
+    };
+
     return (
       <div>
-        {data.length > 1 && (
-          <div className="flex justify-end mb-2">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div
+            className="inline-flex rounded-md border border-white/10 bg-[var(--surface-1)]/60 p-0.5"
+            role="tablist"
+            aria-label="Episode chart data"
+          >
+            {(["position", "velocity"] as const).map((option) => {
+              const active = mode === option;
+              const disabled = option === "velocity" && !hasVelocityData;
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  disabled={disabled}
+                  title={
+                    disabled
+                      ? "No complete xyz or r1-r6 pose groups were found"
+                      : undefined
+                  }
+                  onClick={() => selectMode(option)}
+                  className={`rounded px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                    active
+                      ? "bg-cyan-400/15 text-cyan-200"
+                      : "text-slate-500 hover:text-slate-200"
+                  }`}
+                >
+                  {option === "position" ? "Position" : "Velocity"}
+                </button>
+              );
+            })}
+          </div>
+
+          {activeData.length > 1 && (
             <button
+              type="button"
               onClick={() => setExpanded((v) => !v)}
               className={`text-xs px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${
                 expanded
@@ -122,8 +201,8 @@ export const DataRecharts = React.memo(
               </svg>
               {expanded ? "Split charts" : "Combine all"}
             </button>
-          </div>
-        )}
+          )}
+        </div>
 
         {expanded ? (
           <SingleDataGraph
@@ -134,9 +213,9 @@ export const DataRecharts = React.memo(
           />
         ) : (
           <div className="grid md:grid-cols-2 grid-cols-1 gap-4">
-            {data.map((group, idx) => (
+            {activeData.map((group, idx) => (
               <SingleDataGraph
-                key={idx}
+                key={`${mode}-${idx}`}
                 data={group}
                 hoveredTime={hoveredTime}
                 setHoveredTime={setHoveredTime}
@@ -226,7 +305,7 @@ const SingleDataGraph = React.memo(
       setVisibleKeys(dataKeys);
     }
 
-    const { groups, singles, groupColorMap } = useMemo(() => {
+    const { groups, singles, groupColorMap, seriesColorMap } = useMemo(() => {
       const grouped: Record<string, string[]> = {};
       const singleList: string[] = [];
       dataKeys.forEach((key) => {
@@ -243,9 +322,27 @@ const SingleDataGraph = React.memo(
       const allGroups = [...Object.keys(grouped), ...singleList];
       const colorMap: Record<string, string> = {};
       allGroups.forEach((group, idx) => {
-        colorMap[group] = CHART_COLORS[idx % CHART_COLORS.length];
+        const velocity = velocitySeriesInfo(group);
+        colorMap[group] = velocity
+          ? DIRECTION_COLORS[velocity.direction]
+          : CHART_COLORS[idx % CHART_COLORS.length];
       });
-      return { groups: grouped, singles: singleList, groupColorMap: colorMap };
+      const seriesColors: Record<string, string> = {};
+      dataKeys.forEach((key) => {
+        const group = key.includes(SERIES_NAME_DELIMITER)
+          ? key.split(SERIES_NAME_DELIMITER)[0]
+          : key;
+        const velocity = velocitySeriesInfo(key);
+        seriesColors[key] = velocity
+          ? DIRECTION_COLORS[velocity.direction]
+          : colorMap[group];
+      });
+      return {
+        groups: grouped,
+        singles: singleList,
+        groupColorMap: colorMap,
+        seriesColorMap: seriesColors,
+      };
     }, [dataKeys]);
 
     // Find the closest data point to the current time for highlighting
@@ -327,6 +424,7 @@ const SingleDataGraph = React.memo(
                 <div className="pl-5 flex flex-col gap-0.5 mt-0.5">
                   {children.map((key) => {
                     const label = key.split(SERIES_NAME_DELIMITER).pop() ?? key;
+                    const seriesColor = seriesColorMap[key];
                     return (
                       <label
                         key={key}
@@ -337,7 +435,7 @@ const SingleDataGraph = React.memo(
                           checked={visibleKeys.includes(key)}
                           onChange={() => handleCheckboxChange(key)}
                           className="size-2.5"
-                          style={{ accentColor: color }}
+                          style={{ accentColor: seriesColor }}
                         />
                         <span
                           className={`text-xs ${visibleKeys.includes(key) ? "text-slate-300" : "text-slate-500"}`}
@@ -345,10 +443,10 @@ const SingleDataGraph = React.memo(
                           {label}
                         </span>
                         <span
-                          className={`text-xs font-mono tabular-nums ml-1 ${visibleKeys.includes(key) ? "text-cyan-200/80" : "text-slate-600"}`}
+                          className={`ml-1 whitespace-pre font-mono text-xs tabular-nums ${visibleKeys.includes(key) ? "text-cyan-200/80" : "text-slate-600"}`}
                         >
                           {typeof currentData[key] === "number"
-                            ? currentData[key].toFixed(2)
+                            ? formatLegendValue(currentData[key])
                             : "–"}
                         </span>
                       </label>
@@ -359,7 +457,7 @@ const SingleDataGraph = React.memo(
             );
           })}
           {singles.map((key) => {
-            const color = groupColorMap[key];
+            const color = seriesColorMap[key];
             return (
               <label
                 key={key}
@@ -378,10 +476,10 @@ const SingleDataGraph = React.memo(
                   {key}
                 </span>
                 <span
-                  className={`text-xs font-mono tabular-nums ml-1 ${visibleKeys.includes(key) ? "text-cyan-200/80" : "text-slate-600"}`}
+                  className={`ml-1 whitespace-pre font-mono text-xs tabular-nums ${visibleKeys.includes(key) ? "text-cyan-200/80" : "text-slate-600"}`}
                 >
                   {typeof currentData[key] === "number"
-                    ? currentData[key].toFixed(2)
+                    ? formatLegendValue(currentData[key])
                     : "–"}
                 </span>
               </label>
@@ -483,9 +581,12 @@ const SingleDataGraph = React.memo(
                 const group = key.includes(SERIES_NAME_DELIMITER)
                   ? key.split(SERIES_NAME_DELIMITER)[0]
                   : key;
-                const color = groupColorMap[group];
+                const color = seriesColorMap[key];
                 let strokeDasharray: string | undefined = undefined;
-                if (groups[group] && groups[group].length > 1) {
+                const velocity = velocitySeriesInfo(key);
+                if (velocity) {
+                  if (velocity.source !== "action") strokeDasharray = "5 5";
+                } else if (groups[group] && groups[group].length > 1) {
                   const idxInGroup = groups[group].indexOf(key);
                   if (idxInGroup > 0) strokeDasharray = "5 5";
                 }

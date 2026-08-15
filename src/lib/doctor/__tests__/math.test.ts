@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   combineMatrices,
   countStandardizedJumps,
+  findStandardizedDimensionJumps,
   maxConsecutiveEqualRows,
   matrixDiff,
   maxConsecutiveTrue,
@@ -125,5 +126,26 @@ describe("Doctor numeric helpers", () => {
   it("finds extrema without spreading a large array into call arguments", () => {
     const values = Array.from({ length: 200_000 }, (_, index) => index - 5);
     expect(minMax(values)).toEqual({ minimum: -5, maximum: 199_994 });
+  });
+
+  it("finds coordinated dimension jumps separately from mean-z jumps", () => {
+    const matrix = [
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [9, 9, 0, 0],
+    ];
+    expect(
+      findStandardizedDimensionJumps(matrix, [1, 1, 1, 1], {
+        threshold: 8,
+        minDimensions: 2,
+        extremeThreshold: 40,
+      }),
+    ).toEqual([
+      {
+        index: 2,
+        dimensions: [0, 1],
+        zScores: [9, 9, 0, 0],
+      },
+    ]);
   });
 });
