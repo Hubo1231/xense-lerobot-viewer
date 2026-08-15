@@ -14,6 +14,12 @@ export type SyncListing = {
   endpoint: string;
   repos: string[];
   count: number;
+  /**
+   * The repos that actually differ from the local copy — missing, at an older
+   * commit, or with files that no longer match the commit's tree. This, not
+   * `repos`, is what a plain sync transfers.
+   */
+  pending: string[];
   confirmRequired: true;
 };
 
@@ -39,7 +45,10 @@ export type SyncResult = {
   org: string;
   endpoint: string;
   repos: string[];
+  pending: string[];
   downloaded: number;
+  /** Repos left alone because they already sit at the remote commit. */
+  skipped: number;
   failed: { repo: string; error: string }[];
   listOnly: boolean;
 };
@@ -65,16 +74,21 @@ export async function listSyncCandidates(
 /**
  * Run the download, invoking `onProgress` for each event as it arrives.
  * Resolves with the final result; rejects on a stream-level error.
+ *
+ * By default only repos that differ are transferred. `force` re-fetches every
+ * repo in the org — the escape hatch for a local copy the commit check cannot
+ * see through.
  */
 export async function runSync(
   source: string,
   onProgress: (progress: SyncProgress) => void,
-  signal?: AbortSignal,
+  options: { signal?: AbortSignal; force?: boolean } = {},
 ): Promise<SyncResult> {
+  const { signal, force = false } = options;
   const response = await fetch(SYNC_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source, confirm: true }),
+    body: JSON.stringify({ source, confirm: true, force }),
     signal,
   });
 

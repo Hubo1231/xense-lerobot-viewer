@@ -18,9 +18,14 @@ streaming route:
     {"type":"result","result":{...}}
     {"type":"error","error":"..."}
 
+Only repos that actually differ are transferred: the org listing carries each
+repo's commit sha, and a local copy already sitting at that commit — with every
+file its tree lists present at the right size — is left alone. `--force`
+overrides that and re-fetches everything.
+
 Usage:
     sync_hf_dataset.py --org TacVerse --root /path/to/lerobot [--list-only]
-                       [--limit N] [--repo A --repo B]
+                       [--limit N] [--repo A --repo B] [--force]
 """
 
 from __future__ import annotations
@@ -59,13 +64,95 @@ def fail(message: str) -> int:
     return 1
 
 
-def list_org_repos(org: str, limit: int | None) -> list[str]:
+def list_org_repos(org: str, limit: int | None) -> list[tuple[str, str | None]]:
+    """Every dataset in the org as `(repo_id, remote_commit_sha)`.
+
+    `expand=["sha"]` costs nothing extra on the listing call and is what lets
+    the caller skip repos that are already at that commit locally. A repo whose
+    sha does not come back is reported as None and always counts as work — the
+    conservative direction, since re-downloading is merely slow while wrongly
+    skipping leaves the user without data they asked for.
+    """
     from huggingface_hub import list_datasets
 
     # `direction=` was dropped in huggingface_hub 1.x; `sort` alone already
     # returns newest-first. Passing it would raise on the installed version.
-    repos = [d.id for d in list_datasets(author=org, sort="lastModified")]
+    repos = [
+        (d.id, getattr(d, "sha", None))
+        for d in list_datasets(author=org, sort="lastModified", expand=["sha"])
+    ]
     return repos[:limit] if limit else repos
+
+
+def fetch_shas(repo_ids: list[str]) -> list[tuple[str, str | None]]:
+    """Remote commit per repo, for the explicit `--repo` path that never lists."""
+    from huggingface_hub import HfApi
+
+    api = HfApi()
+    out: list[tuple[str, str | None]] = []
+    for repo_id in repo_ids:
+        try:
+            out.append((repo_id, api.dataset_info(repo_id).sha))
+        except Exception:
+            out.append((repo_id, None))  # unknown → treat as work
+    return out
+
+
+def repo_target(root: str, org: str, repo_id: str) -> str:
+    """`<root>/<org>/<name>` — the layout the viewer's scanner expects."""
+    return os.path.join(root, org, repo_id.split("/")[-1])
+
+
+def local_snapshot_shas(target: str) -> set[str]:
+    """Commits `snapshot_download` has already materialised in this directory.
+
+    It records one `.cache/huggingface/trees/<commit>.json` per snapshot it
+    wrote, so the filenames alone answer "which commit is this copy at".
+    """
+    trees = os.path.join(target, ".cache", "huggingface", "trees")
+    try:
+        names = os.listdir(trees)
+    except OSError:
+        return set()
+    return {n[:-5] for n in names if n.endswith(".json")}
+
+
+def tree_is_intact(target: str, sha: str) -> bool:
+    """Every file the commit's tree lists is present at the size it lists.
+
+    The commit marker alone is not enough: it stays behind when files are later
+    deleted, truncated by an interrupted move, or rewritten in place (which is
+    exactly what `export_subtasks.py` does to the data parquets). Sizes are a
+    cheap stand-in for content — the tree carries ~10 entries for a v3 dataset,
+    so this is a handful of stat calls, not a hash.
+    """
+    path = os.path.join(target, ".cache", "huggingface", "trees", f"{sha}.json")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            files = json.load(handle).get("files") or {}
+    except (OSError, ValueError):
+        return False
+    if not files:
+        return False
+
+    for relative, meta in files.items():
+        try:
+            size = os.stat(os.path.join(target, *relative.split("/"))).st_size
+        except OSError:
+            return False
+        expected = meta.get("size")
+        if isinstance(expected, int) and size != expected:
+            return False
+    return True
+
+
+def is_up_to_date(root: str, org: str, repo_id: str, remote_sha: str | None) -> bool:
+    if not remote_sha:
+        return False
+    target = repo_target(root, org, repo_id)
+    if remote_sha not in local_snapshot_shas(target):
+        return False
+    return tree_is_intact(target, remote_sha)
 
 
 MIRROR_HINT = (
@@ -189,54 +276,80 @@ def main() -> int:
         help="restrict to these repo ids (repeatable); default is the whole org",
     )
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="re-fetch every repo, including ones already at the remote commit",
+    )
     args = parser.parse_args()
 
     endpoint = os.environ.get("HF_ENDPOINT", "")
     progress(phase="listing", endpoint=endpoint, org=args.org, percent=0)
 
     try:
-        repos = args.repo or list_org_repos(args.org, args.limit)
+        listed = (
+            fetch_shas(args.repo)
+            if args.repo
+            else list_org_repos(args.org, args.limit)
+        )
     except Exception as exc:  # network down, bad token, unknown org
         return fail(f"Could not list datasets for {args.org}: {exc}")
 
-    if not repos:
+    repos = [repo_id for repo_id, _ in listed]
+    # The work list is the diff, not the org. Without this every run walks all
+    # ~200 repos and pays a per-file metadata round trip to confirm each one is
+    # unchanged, which is where "it starts from 1 again every time" came from.
+    pending = [
+        repo_id
+        for repo_id, sha in listed
+        if not is_up_to_date(args.root, args.org, repo_id, sha)
+    ]
+
+    def emit_result(downloaded: int, failed: list[dict], work: list[str]) -> int:
         emit({
             "type": "result",
             "result": {
-                "org": args.org, "endpoint": endpoint, "repos": [],
-                "downloaded": 0, "failed": [], "listOnly": args.list_only,
+                "org": args.org,
+                "endpoint": endpoint,
+                "repos": repos,
+                "pending": pending,
+                "downloaded": downloaded,
+                "skipped": len(repos) - len(work),
+                "failed": failed,
+                "listOnly": args.list_only,
             },
         })
         return 0
 
+    if not repos:
+        return emit_result(0, [], [])
+
     if args.list_only:
         # The gate the UI uses to show a confirmation before pulling anything.
-        emit({
-            "type": "result",
-            "result": {
-                "org": args.org, "endpoint": endpoint, "repos": repos,
-                "downloaded": 0, "failed": [], "listOnly": True,
-            },
-        })
-        return 0
+        return emit_result(0, [], pending)
+
+    work = repos if args.force else pending
+    if not work:
+        # Nothing to do — say so rather than spending a metadata round trip per
+        # file to rediscover it.
+        progress(phase="complete", total=0, percent=100)
+        return emit_result(0, [], work)
 
     # Fail fast and legibly rather than once per repo with a library message
     # that names neither the endpoint nor the fix.
     progress(phase="preflight", percent=0)
-    blocker = preflight(repos[0])
+    blocker = preflight(work[0])
     if blocker:
         return fail(blocker)
 
     from huggingface_hub import snapshot_download
 
-    total = len(repos)
+    total = len(work)
     downloaded = 0
     failed: list[dict] = []
 
-    for i, repo_id in enumerate(repos):
-        # `<root>/<org>/<name>` — the layout the viewer's scanner expects.
-        leaf = repo_id.split("/")[-1]
-        target = os.path.join(args.root, args.org, leaf)
+    for i, repo_id in enumerate(work):
+        target = repo_target(args.root, args.org, repo_id)
         progress(
             phase="downloading",
             repo=repo_id,
@@ -261,18 +374,7 @@ def main() -> int:
             progress(phase="failed", repo=repo_id, index=i + 1, total=total)
 
     progress(phase="complete", total=total, percent=100)
-    emit({
-        "type": "result",
-        "result": {
-            "org": args.org,
-            "endpoint": endpoint,
-            "repos": repos,
-            "downloaded": downloaded,
-            "failed": failed,
-            "listOnly": False,
-        },
-    })
-    return 0
+    return emit_result(downloaded, failed, work)
 
 
 if __name__ == "__main__":
