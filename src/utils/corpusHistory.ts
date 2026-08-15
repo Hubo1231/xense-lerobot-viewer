@@ -14,11 +14,24 @@
  * `src/lib/corpus-history-store.ts`.
  */
 
+import { formatBytes } from "@/utils/byteSize";
+
 export type SourceSnapshot = {
   tasks: number;
   episodes: number;
   frames: number;
   hours: number;
+  /**
+   * Bytes on disk. **Optional, and the absence is load-bearing**: rows written
+   * before storage tracking existed have no `bytes`, and a missing baseline
+   * must read as "unknown" rather than zero — otherwise the first render after
+   * the upgrade would report the entire corpus as growth.
+   *
+   * Added without bumping `version`, deliberately: a bump makes `parseHistory`
+   * discard the file, throwing away months of real history to add one column
+   * that every consumer already treats as optional.
+   */
+  bytes?: number;
 };
 
 export type DaySnapshot = {
@@ -36,6 +49,8 @@ export type SourceDelta = {
   episodes: number;
   frames: number;
   hours: number;
+  /** Byte growth, or null when the baseline predates storage tracking. */
+  bytes: number | null;
 };
 
 export type DailyDelta = {
@@ -69,6 +84,7 @@ export function snapshotFromSources(
     episodes: number;
     frames: number;
     hours: number;
+    bytes?: number;
   }[],
   capturedAt: string,
 ): DaySnapshot {
@@ -81,6 +97,9 @@ export function snapshotFromSources(
       // Stored rounded: the raw float carries meaningless precision and would
       // make every same-day rewrite look like a change.
       hours: Math.round(s.hours * 1000) / 1000,
+      // Written only when measured, so "absent" keeps meaning "never recorded"
+      // and a caller that cannot measure size does not fabricate a zero.
+      ...(Number.isFinite(s.bytes) ? { bytes: s.bytes } : {}),
     };
   }
   return { capturedAt, sources: out };
@@ -102,7 +121,32 @@ function daysBetween(from: string, to: string): number | null {
   return Math.round((b - a) / 86_400_000);
 }
 
-const ZERO: SourceDelta = { tasks: 0, episodes: 0, frames: 0, hours: 0 };
+const ZERO: SourceDelta = {
+  tasks: 0,
+  episodes: 0,
+  frames: 0,
+  hours: 0,
+  bytes: 0,
+};
+
+/**
+ * Byte growth for one source, or null when it cannot be known.
+ *
+ * The three cases that matter:
+ *   - baseline recorded bytes  → plain difference, negative if data was deleted
+ *   - source absent from the baseline entirely → genuinely new, so all of it
+ *     counts (this is how tasks/episodes already treat a new source)
+ *   - baseline exists but has no `bytes` → **unknown**, not zero and not "all
+ *     new". Reporting 49 GB of growth the day after upgrading would be a lie.
+ */
+function bytesDelta(
+  now: SourceSnapshot | undefined,
+  before: SourceSnapshot | undefined,
+): number | null {
+  if (!before) return now?.bytes ?? null;
+  if (!Number.isFinite(before.bytes)) return null;
+  return (now?.bytes ?? 0) - (before.bytes as number);
+}
 
 /**
  * Insert (or overwrite) today's row and trim anything past the retention
@@ -171,12 +215,17 @@ export function computeDailyDelta(
       episodes: (now?.episodes ?? 0) - (before?.episodes ?? 0),
       frames: (now?.frames ?? 0) - (before?.frames ?? 0),
       hours: (now?.hours ?? 0) - (before?.hours ?? 0),
+      bytes: bytesDelta(now, before),
     };
     bySource[name] = delta;
     total.tasks += delta.tasks;
     total.episodes += delta.episodes;
     total.frames += delta.frames;
     total.hours += delta.hours;
+    // One unmeasurable source poisons the total: a partial sum presented as
+    // "+X GB" would read as the whole corpus's growth. Unknown beats wrong.
+    if (delta.bytes === null) total.bytes = null;
+    else if (total.bytes !== null) total.bytes += delta.bytes;
   }
 
   return { since, spanDays: daysBetween(since, todayKey), bySource, total };
@@ -189,7 +238,11 @@ export function isFlatDelta(delta: SourceDelta): boolean {
     delta.tasks === 0 &&
     delta.episodes === 0 &&
     delta.frames === 0 &&
-    Math.abs(delta.hours) < 0.005
+    Math.abs(delta.hours) < 0.005 &&
+    // An unknown byte delta is not evidence of change — the other four fields
+    // decide. A known non-zero one is: a re-encode or a deleted video moves
+    // bytes without moving any count.
+    (delta.bytes === null || delta.bytes === 0)
   );
 }
 
@@ -222,6 +275,41 @@ export function formatDelta(
   return `${sign}${shown}${unit}`;
 }
 
+/**
+ * Signed storage delta: 0 → "—", null → "n/a" (baseline predates tracking).
+ *
+ * Kept separate from `formatDelta` because bytes need unit scaling, and because
+ * "no change" and "never recorded" have to stay visibly different — collapsing
+ * them would hide the one-day gap after the upgrade behind a plausible dash.
+ */
+export function formatDeltaBytes(value: number | null): string {
+  if (value === null) return "n/a";
+  if (!Number.isFinite(value) || value === 0) return "—";
+  return `${value > 0 ? "+" : "−"}${formatBytes(Math.abs(value))}`;
+}
+
+/**
+ * Only `bytes` is validated, because only `bytes` carries meaning in its
+ * absence: a garbage value there has to collapse back to "never recorded", or
+ * the delta math turns into NaN and the UI shows "+NaN GB". The count fields
+ * keep the module's existing permissive handling.
+ */
+function normalizeSources(raw: unknown): Record<string, SourceSnapshot> {
+  const sources = raw as Record<string, SourceSnapshot>;
+  const out: Record<string, SourceSnapshot> = {};
+  for (const [name, snapshot] of Object.entries(sources)) {
+    if (!snapshot || typeof snapshot !== "object") continue;
+    if (Number.isFinite(snapshot.bytes)) {
+      out[name] = snapshot;
+    } else {
+      const rest = { ...snapshot };
+      delete rest.bytes;
+      out[name] = rest;
+    }
+  }
+  return out;
+}
+
 /** Accepts only a well-formed history document; anything else starts fresh
  *  rather than throwing, so a hand-edited or truncated file cannot break the
  *  homepage. */
@@ -240,7 +328,7 @@ export function parseHistory(raw: unknown): CorpusHistory {
     if (!day.sources || typeof day.sources !== "object") continue;
     days[key] = {
       capturedAt: typeof day.capturedAt === "string" ? day.capturedAt : "",
-      sources: day.sources as Record<string, SourceSnapshot>,
+      sources: normalizeSources(day.sources),
     };
   }
   return { version: HISTORY_VERSION, days };

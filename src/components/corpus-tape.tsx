@@ -11,6 +11,7 @@ import {
   tapeColor,
   tapeWidths,
 } from "@/utils/corpusStats";
+import { formatBytes } from "@/utils/byteSize";
 
 type OverallCounts = { ok: number; empty: number; incomplete: number };
 
@@ -84,6 +85,7 @@ export default function CorpusTape({
             { label: "Frames", value: formatCompact(stats.totalFrames) },
             { label: "Tasks", value: formatCompact(stats.totalTasks) },
             { label: "Sources", value: String(stats.segments.length) },
+            { label: "Storage", value: formatBytes(stats.totalBytes) },
           ].map((item) => (
             <div key={item.label}>
               <dt className="text-[10px] uppercase tracking-[0.14em] text-[var(--text-faint)]">
@@ -113,7 +115,7 @@ export default function CorpusTape({
               onFocus={() => setHovered(segment.prefix)}
               onBlur={() => setHovered(null)}
               title={`${segment.prefix} — ${formatHoursValue(segment.hours)} h of ${headline.value}${headline.unit}`}
-              aria-label={`${segment.prefix}: ${formatHoursValue(segment.hours)} hours, ${segment.episodes} episodes, ${segment.tasks} tasks`}
+              aria-label={`${segment.prefix}: ${formatHoursValue(segment.hours)} hours, ${segment.episodes} episodes, ${segment.tasks} tasks, ${formatBytes(segment.bytes)} on disk`}
               className="group/band relative h-full overflow-hidden rounded-[3px] transition-[width,opacity] duration-700 ease-out first:rounded-l-md last:rounded-r-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-0)] motion-reduce:transition-none"
               style={{
                 width: revealed ? `${widths[i]}%` : "0%",
@@ -161,6 +163,9 @@ export default function CorpusTape({
               </span>
               <span className="tabular text-[var(--text-faint)]">
                 {formatEpisodeLength(segment.avgEpisodeSeconds)}/ep
+              </span>
+              <span className="tabular text-[var(--text-faint)]">
+                {formatBytes(segment.bytes)}
               </span>
             </li>
           );

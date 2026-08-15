@@ -49,6 +49,8 @@ export type LocalDatasetSummary = {
   total_episodes: number;
   total_frames: number;
   fps: number;
+  /** Bytes on disk for the whole dataset directory. See `directorySizeBytes`. */
+  sizeBytes: number;
   thumbnailVideoUrl: string | null;
   integrity: DatasetIntegrity;
   tags: DatasetTags;
@@ -91,6 +93,42 @@ async function isDirectoryWithContent(dir: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Bytes held by a dataset directory, walked recursively.
+ *
+ * Counts **everything** under the directory, including the `.cache/huggingface`
+ * bookkeeping a Hub sync leaves behind — the question this answers is "what is
+ * this dataset costing me on disk", and that cache is part of the answer even
+ * though discovery ignores it when looking for datasets.
+ *
+ * Symlinks are skipped rather than followed: a `videos/` symlink points at bytes
+ * owned by somewhere else, and following one would either double-count them or
+ * attribute another dataset's storage to this one. Apparent size is summed, not
+ * allocated blocks, so a sparse file reads larger here than in `du`.
+ */
+export async function directorySizeBytes(dir: string): Promise<number> {
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return 0; // unreadable subtree contributes nothing rather than failing the scan
+  }
+
+  const sizes = await Promise.all(
+    entries.map(async (entry) => {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) return directorySizeBytes(full);
+      if (!entry.isFile()) return 0; // symlink, socket, fifo…
+      try {
+        return (await fs.lstat(full)).size;
+      } catch {
+        return 0; // vanished mid-scan (an export rewriting a parquet, say)
+      }
+    }),
+  );
+  return sizes.reduce((sum, size) => sum + size, 0);
 }
 
 export type DatasetIntegrity = {
@@ -167,9 +205,10 @@ async function walkForDatasets(
       .join("/");
     if (relativePath) {
       const encodedPath = encodeLocalDatasetPath(relativePath);
-      const [integrity, tags] = await Promise.all([
+      const [integrity, tags, sizeBytes] = await Promise.all([
         probeIntegrity(currentDir, info),
         readDatasetTags(currentDir),
+        directorySizeBytes(currentDir),
       ]);
       const thumbnailPath =
         integrity.status === "ok" ? pickThumbnailVideoPath(info) : null;
@@ -185,6 +224,7 @@ async function walkForDatasets(
         total_episodes: info.total_episodes ?? 0,
         total_frames: info.total_frames ?? 0,
         fps: info.fps ?? 0,
+        sizeBytes,
         thumbnailVideoUrl,
         integrity,
         tags,

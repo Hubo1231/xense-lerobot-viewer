@@ -6,6 +6,11 @@ import {
   decodeLocalDatasetPath,
   resolveServerLocalDatasetPath,
 } from "@/utils/datasetRoute";
+import {
+  PythonUnavailableError,
+  resolvePython,
+  type ResolvedPython,
+} from "@/lib/python-runtime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,14 +47,31 @@ interface PyResult {
   path?: string | null;
 }
 
-function runExporter(datasetDir: string): Promise<{
+async function runExporter(datasetDir: string): Promise<{
   code: number | null;
   result: PyResult | null;
   stderr: string;
 }> {
+  // pandas/pyarrow rarely live in the first `python3` on PATH, so the
+  // interpreter is resolved instead of assumed (see `@/lib/python-runtime`).
+  let python: ResolvedPython;
+  try {
+    python = await resolvePython(["pandas", "pyarrow"]);
+  } catch (err) {
+    return {
+      code: null,
+      result: {
+        ok: false,
+        error:
+          err instanceof PythonUnavailableError ? err.message : String(err),
+      },
+      stderr: "",
+    };
+  }
+
   return new Promise((resolve) => {
     const script = path.join(process.cwd(), "scripts", "export_subtasks.py");
-    const py = process.env.PYTHON_BIN || "python3";
+    const py = python.bin;
     const child = spawn(py, [script, datasetDir, "--yes", "--json"], {
       cwd: process.cwd(),
     });

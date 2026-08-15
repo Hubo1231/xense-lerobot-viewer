@@ -269,8 +269,10 @@ def main() -> None:
         import pyarrow  # noqa: F401
     except Exception as exc:  # pragma: no cover - env dependent
         die(
-            "pandas + pyarrow are required (pip install -r scripts/requirements.txt): "
-            + str(exc),
+            f"pandas + pyarrow are required, and {sys.executable} does not have "
+            f"them ({exc}). Install them there "
+            f"({sys.executable} -m pip install -r scripts/requirements.txt), or "
+            "set PYTHON_BIN to an interpreter that already has them.",
             as_json,
         )
 

@@ -22,6 +22,7 @@ const ds = (over: Partial<LocalDatasetSummary> = {}): LocalDatasetSummary =>
     total_episodes: 0,
     total_frames: 0,
     fps: 30,
+    sizeBytes: 0,
     thumbnailVideoUrl: null,
     integrity: { status: "ok" },
     tags: {},
@@ -72,6 +73,29 @@ describe("computeCorpusStats", () => {
     expect(stats.segments[0].tasks).toBe(2);
     expect(stats.totalFrames).toBe(162000);
     expect(stats.totalTasks).toBe(2);
+  });
+
+  test("sums bytes per segment and across the corpus", () => {
+    const stats = computeCorpusStats([
+      group("A", [ds({ sizeBytes: 1_000 }), ds({ sizeBytes: 2_500 })]),
+      group("B", [ds({ sizeBytes: 500 })]),
+    ]);
+
+    const bySource = Object.fromEntries(
+      stats.segments.map((s) => [s.prefix, s.bytes]),
+    );
+    expect(bySource).toEqual({ A: 3_500, B: 500 });
+    expect(stats.totalBytes).toBe(4_000);
+  });
+
+  test("treats a dataset with no measured size as zero, not NaN", () => {
+    const stats = computeCorpusStats([
+      group("A", [
+        ds({ sizeBytes: 1_000 }),
+        ds({ sizeBytes: undefined as unknown as number }),
+      ]),
+    ]);
+    expect(stats.totalBytes).toBe(1_000);
   });
 
   test("sorts segments by hours descending and computes shares summing to 1", () => {

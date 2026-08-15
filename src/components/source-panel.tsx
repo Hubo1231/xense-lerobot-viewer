@@ -8,8 +8,10 @@ import {
   formatHours,
   tapeColor,
 } from "@/utils/corpusStats";
+import { formatBytes } from "@/utils/byteSize";
 import {
   formatDelta,
+  formatDeltaBytes,
   isFlatDelta,
   type SourceDelta,
 } from "@/utils/corpusHistory";
@@ -37,8 +39,14 @@ type SyncState =
   | { kind: "done"; downloaded: number; skipped: number; failed: number }
   | { kind: "error"; message: string };
 
-/** Transferred volume, at the precision the magnitude deserves. */
-function formatBytes(bytes: number): string {
+/**
+ * Transferred volume, at the precision the magnitude deserves.
+ *
+ * Deliberately decimal (1000) and separate from `formatBytes`: this number is
+ * read against what the Hub reports for the repo mid-download, whereas the
+ * storage figures are read against the filesystem.
+ */
+function formatTransferred(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "";
   if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(2)} GB`;
   if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
@@ -76,6 +84,11 @@ function TodayStrip({
     { label: "Hours", value: formatDelta(delta.hours, " h", 1) },
     { label: "Episodes", value: formatDelta(delta.episodes) },
     { label: "Tasks", value: formatDelta(delta.tasks) },
+    // Dropped rather than shown as "n/a" when the baseline predates storage
+    // tracking: one dead column on every source, for one day, teaches nothing.
+    ...(delta.bytes === null
+      ? []
+      : [{ label: "Storage", value: formatDeltaBytes(delta.bytes) }]),
   ];
   return (
     <div>
@@ -196,6 +209,7 @@ export default function SourcePanel({
               label: "Share",
               value: `${Math.round(segment.share * 100)}%`,
             },
+            { label: "Storage", value: formatBytes(segment.bytes) },
           ].map((item) => (
             <div key={item.label}>
               <dt className="text-[10px] uppercase tracking-[0.14em] text-[var(--text-faint)]">
@@ -372,7 +386,7 @@ function SyncBlock({
     // percent barely shifts while one multi-gigabyte dataset transfers.
     const detail = [
       p.filesTotal ? `${p.filesDone ?? 0}/${p.filesTotal} files` : null,
-      p.bytes ? formatBytes(p.bytes) : null,
+      p.bytes ? formatTransferred(p.bytes) : null,
     ]
       .filter(Boolean)
       .join(" · ");

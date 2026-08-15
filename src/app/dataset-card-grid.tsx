@@ -18,6 +18,7 @@ import {
   compareDatasetsBySize,
   getDatasetTaskName,
 } from "@/utils/datasetGrouping";
+import { formatBytes } from "@/utils/byteSize";
 
 type DatasetCardGridProps = {
   root: string;
@@ -535,6 +536,14 @@ export default function DatasetCardGrid({
                     {ds.total_frames > 0 && (
                       <span className="tabular text-slate-400">
                         · {formatTotalFrames(ds.total_frames)} frames
+                      </span>
+                    )}
+                    {ds.sizeBytes > 0 && (
+                      <span
+                        className="tabular text-slate-400"
+                        title={`${ds.sizeBytes.toLocaleString("en-US")} bytes on disk`}
+                      >
+                        · {formatBytes(ds.sizeBytes)}
                       </span>
                     )}
                   </div>
