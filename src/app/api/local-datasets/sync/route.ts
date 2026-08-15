@@ -2,6 +2,11 @@ import { NextRequest } from "next/server";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import path from "node:path";
 import { resolveLocalDatasetRoot } from "@/lib/local-datasets-discovery";
+import {
+  PythonUnavailableError,
+  resolvePython,
+  type ResolvedPython,
+} from "@/lib/python-runtime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,9 +59,11 @@ function scriptPath(): string {
   return path.join(process.cwd(), "scripts", "sync_hf_dataset.py");
 }
 
-function spawnSync(args: string[]): ChildProcessWithoutNullStreams {
-  const py = process.env.PYTHON_BIN || "python3";
-  return spawn(py, [scriptPath(), ...args], {
+function spawnScript(
+  pythonBin: string,
+  args: string[],
+): ChildProcessWithoutNullStreams {
+  return spawn(pythonBin, [scriptPath(), ...args], {
     cwd: process.cwd(),
     env: {
       ...process.env,
@@ -67,15 +74,37 @@ function spawnSync(args: string[]): ChildProcessWithoutNullStreams {
   });
 }
 
+/**
+ * The interpreter the sync script needs. Resolved rather than assumed: the
+ * first `python3` on PATH is frequently not the one holding `huggingface_hub`,
+ * and the failure mode is an opaque ModuleNotFoundError from the script.
+ */
+function syncPython(): Promise<ResolvedPython> {
+  return resolvePython(["huggingface_hub"]);
+}
+
 /** Run the script to completion, returning its parsed `result` event. */
-function runToCompletion(
+async function runToCompletion(
   args: string[],
   timeoutMs: number,
 ): Promise<{ result: SyncResult | null; error: string | null }> {
+  let python: ResolvedPython;
+  try {
+    python = await syncPython();
+  } catch (err) {
+    return {
+      result: null,
+      error:
+        err instanceof PythonUnavailableError
+          ? err.message
+          : `Failed to launch Python: ${err}`,
+    };
+  }
+
   return new Promise((resolve) => {
     let child: ChildProcessWithoutNullStreams;
     try {
-      child = spawnSync(args);
+      child = spawnScript(python.bin, args);
     } catch (err) {
       resolve({ result: null, error: `Failed to launch Python: ${err}` });
       return;
@@ -104,7 +133,7 @@ function runToCompletion(
     child.on("error", (err) =>
       finish({
         result: null,
-        error: `Failed to launch Python: ${err.message}. Is python3 installed?`,
+        error: `Failed to launch ${python.bin}: ${err.message}. Is Python installed?`,
       }),
     );
     child.on("close", () => {
@@ -135,6 +164,7 @@ function streamDownload(
   source: string,
   root: string,
   force: boolean,
+  pythonBin: string,
 ): Response {
   const encoder = new TextEncoder();
   return new Response(
@@ -163,7 +193,7 @@ function streamDownload(
         try {
           const args = ["--org", source, "--root", root];
           if (force) args.push("--force");
-          child = spawnSync(args);
+          child = spawnScript(pythonBin, args);
         } catch (err) {
           send({ type: "error", error: `Failed to launch Python: ${err}` });
           activeSync = null;
@@ -291,6 +321,21 @@ export async function POST(request: NextRequest): Promise<Response> {
     });
   }
 
+  // Resolve before opening the stream: an interpreter problem is a plain 502
+  // with a fixable message, not an error buried mid-transfer.
+  let python: ResolvedPython;
+  try {
+    python = await syncPython();
+  } catch (err) {
+    return Response.json(
+      {
+        error:
+          err instanceof PythonUnavailableError ? err.message : String(err),
+      },
+      { status: 502 },
+    );
+  }
+
   activeSync = { source, startedAt: Date.now() };
-  return streamDownload(source, root, body.force === true);
+  return streamDownload(source, root, body.force === true, python.bin);
 }

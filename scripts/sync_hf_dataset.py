@@ -64,6 +64,26 @@ def fail(message: str) -> int:
     return 1
 
 
+def missing_dependency() -> str | None:
+    """Name the interpreter when the dependency is absent.
+
+    Without this the ImportError is swallowed by the listing handler and
+    reported as "Could not list datasets for <org>: No module named
+    'huggingface_hub'", which points at the org instead of at the Python that
+    actually ran — the one detail needed to fix it.
+    """
+    from importlib.util import find_spec
+
+    if find_spec("huggingface_hub") is not None:
+        return None
+    return (
+        f"huggingface_hub is not installed for {sys.executable}.\n"
+        f"  Install it there ({sys.executable} -m pip install huggingface_hub), "
+        "or set PYTHON_BIN in .env.local to an interpreter that already has it "
+        "(e.g. a conda env: PYTHON_BIN=/path/to/envs/<name>/bin/python)."
+    )
+
+
 def list_org_repos(org: str, limit: int | None) -> list[tuple[str, str | None]]:
     """Every dataset in the org as `(repo_id, remote_commit_sha)`.
 
@@ -282,6 +302,10 @@ def main() -> int:
         help="re-fetch every repo, including ones already at the remote commit",
     )
     args = parser.parse_args()
+
+    blocker = missing_dependency()
+    if blocker:
+        return fail(blocker)
 
     endpoint = os.environ.get("HF_ENDPOINT", "")
     progress(phase="listing", endpoint=endpoint, org=args.org, percent=0)
