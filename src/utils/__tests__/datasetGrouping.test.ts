@@ -79,6 +79,35 @@ describe("compareDatasetsBySize", () => {
     expect(sorted.map((d) => d.relativePath)).toEqual(["b", "c", "a"]);
   });
 
+  test("bytes on disk outrank frames", () => {
+    // Same frame count, tenfold difference on disk: resolution and camera
+    // count are invisible to `total_frames`.
+    const sorted = [
+      makeDataset("lowres", { total_frames: 10_000, sizeBytes: 1_000_000 }),
+      makeDataset("hires", { total_frames: 10_000, sizeBytes: 10_000_000 }),
+    ].sort(compareDatasetsBySize);
+    expect(sorted.map((d) => d.relativePath)).toEqual(["hires", "lowres"]);
+  });
+
+  test("a bigger frame count does not beat a bigger directory", () => {
+    const sorted = [
+      makeDataset("manyframes", { total_frames: 999_999, sizeBytes: 5_000 }),
+      makeDataset("bigondisk", { total_frames: 10, sizeBytes: 9_000_000 }),
+    ].sort(compareDatasetsBySize);
+    expect(sorted[0].relativePath).toBe("bigondisk");
+  });
+
+  test("falls back to frames when sizes are unknown", () => {
+    // sizeBytes is 0 for a directory that could not be walked; those must not
+    // all collapse to the bottom in path order.
+    const sorted = [
+      makeDataset("a", { total_frames: 100, sizeBytes: 0 }),
+      makeDataset("b", { total_frames: 9_000, sizeBytes: 0 }),
+      makeDataset("c", { total_frames: 500, sizeBytes: 0 }),
+    ].sort(compareDatasetsBySize);
+    expect(sorted.map((d) => d.relativePath)).toEqual(["b", "c", "a"]);
+  });
+
   test("breaks frame ties on episode count, then on path", () => {
     const sorted = [
       makeDataset("z", { total_frames: 0, total_episodes: 2 }),
@@ -101,6 +130,17 @@ describe("groupDatasetsByPrefix", () => {
       "Xense/big",
       "Xense/small",
     ]);
+  });
+
+  test("sums bytes per group and ranks the category cards on them", () => {
+    const groups = groupDatasetsByPrefix([
+      makeDataset("Xense/a", { total_frames: 900_000, sizeBytes: 1_000 }),
+      makeDataset("TacVerse/a", { total_frames: 10, sizeBytes: 4_000 }),
+      makeDataset("TacVerse/b", { total_frames: 10, sizeBytes: 5_000 }),
+    ]);
+    expect(groups.map((g) => g.prefix)).toEqual(["TacVerse", "Xense"]);
+    expect(groups[0].totalBytes).toBe(9_000);
+    expect(groups[1].totalBytes).toBe(1_000);
   });
 
   test("falls back to episode totals, then prefix, for equal-frame groups", () => {
