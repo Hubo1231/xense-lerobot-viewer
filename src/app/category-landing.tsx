@@ -4,6 +4,7 @@ import React, { useMemo, useState } from "react";
 import type { DatasetGroup } from "@/utils/datasetGrouping";
 import HoverPlayVideo from "@/components/hover-play-video";
 import CorpusDashboard from "@/components/corpus-dashboard";
+import { formatCompact } from "@/utils/corpusStats";
 import type { DailyDelta } from "@/utils/corpusHistory";
 
 type OverallCounts = {
@@ -185,6 +186,11 @@ export default function CategoryLanding({
                     <span className="tabular">
                       {formatTotalEpisodes(group.totalEpisodes)} episodes
                     </span>
+                    {group.totalFrames > 0 && (
+                      <span className="tabular text-slate-400">
+                        {formatCompact(group.totalFrames)} frames
+                      </span>
+                    )}
                     <span className="inline-flex items-center gap-1 text-emerald-300">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                       {group.counts.ok} healthy
