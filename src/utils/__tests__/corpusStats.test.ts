@@ -5,6 +5,7 @@ import {
   formatCompact,
   formatEpisodeLength,
   formatHours,
+  formatHoursValue,
   tapeColor,
   tapeWidths,
   TAPE_COLORS,
@@ -217,13 +218,28 @@ describe("formatHours", () => {
     expect(formatHours(12.34)).toEqual({ value: "12.3", unit: "h" });
   });
 
-  test("drops the decimal once the number is large", () => {
-    expect(formatHours(417.4)).toEqual({ value: "417", unit: "h" });
+  test("keeps the decimal once the number is large", () => {
+    expect(formatHours(417.4)).toEqual({ value: "417.4", unit: "h" });
+    expect(formatHours(4173.45)).toEqual({ value: "4,173.5", unit: "h" });
   });
 
   test("degrades to zero for empty or invalid input", () => {
-    expect(formatHours(0)).toEqual({ value: "0", unit: "h" });
-    expect(formatHours(NaN)).toEqual({ value: "0", unit: "h" });
+    expect(formatHours(0)).toEqual({ value: "0.0", unit: "h" });
+    expect(formatHours(NaN)).toEqual({ value: "0.0", unit: "h" });
+  });
+});
+
+describe("formatHoursValue", () => {
+  test("always carries exactly one decimal", () => {
+    expect(formatHoursValue(7)).toBe("7.0");
+    expect(formatHoursValue(7.04)).toBe("7.0");
+    expect(formatHoursValue(0.06)).toBe("0.1");
+  });
+
+  test("groups thousands and floors invalid input at zero", () => {
+    expect(formatHoursValue(12345.67)).toBe("12,345.7");
+    expect(formatHoursValue(NaN)).toBe("0.0");
+    expect(formatHoursValue(-3)).toBe("0.0");
   });
 });
 

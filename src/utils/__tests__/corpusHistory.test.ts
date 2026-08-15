@@ -231,6 +231,14 @@ describe("formatDelta", () => {
   test("groups thousands", () => {
     expect(formatDelta(15368)).toBe("+15,368");
   });
+
+  test("pins the precision when fractionDigits is given", () => {
+    // Hours always carry a tenth: "+7 h" and "+7.4 h" are different claims.
+    expect(formatDelta(7, " h", 1)).toBe("+7.0 h");
+    expect(formatDelta(7.44, " h", 1)).toBe("+7.4 h");
+    expect(formatDelta(-1234.56, " h", 1)).toBe("−1,234.6 h");
+    expect(formatDelta(0, " h", 1)).toBe("—");
+  });
 });
 
 describe("parseHistory", () => {

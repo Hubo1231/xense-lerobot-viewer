@@ -193,17 +193,32 @@ export function isFlatDelta(delta: SourceDelta): boolean {
   );
 }
 
-/** Signed, compact rendering for a delta figure: 0 → "—", 12 → "+12". */
-export function formatDelta(value: number, unit = ""): string {
+/**
+ * Signed, compact rendering for a delta figure: 0 → "—", 12 → "+12".
+ *
+ * `fractionDigits` pins the precision for quantities that are always fractional
+ * — hours, where "+7 h" and "+7.4 h" are different claims and the rounded one
+ * reads as suspiciously round. Counts leave it unset and stay integers.
+ */
+export function formatDelta(
+  value: number,
+  unit = "",
+  fractionDigits?: number,
+): string {
   if (!Number.isFinite(value) || value === 0) return "—";
   const sign = value > 0 ? "+" : "−";
   const magnitude = Math.abs(value);
   const shown =
-    magnitude >= 1000
-      ? magnitude.toLocaleString("en-US", { maximumFractionDigits: 0 })
-      : magnitude % 1 === 0
-        ? String(magnitude)
-        : magnitude.toFixed(1);
+    fractionDigits !== undefined
+      ? magnitude.toLocaleString("en-US", {
+          minimumFractionDigits: fractionDigits,
+          maximumFractionDigits: fractionDigits,
+        })
+      : magnitude >= 1000
+        ? magnitude.toLocaleString("en-US", { maximumFractionDigits: 0 })
+        : magnitude % 1 === 0
+          ? String(magnitude)
+          : magnitude.toFixed(1);
   return `${sign}${shown}${unit}`;
 }
 
