@@ -12,6 +12,13 @@ import {
   type ParquetFileEntry,
   type ParquetFileGroup,
 } from "@/types/parquet-browser.types";
+import { formatBytes } from "@/utils/byteSize";
+
+// Re-exported so the parquet panel and its tests keep importing it from here.
+// The implementation moved to `@/utils/byteSize` when the homepage started
+// showing storage figures — importing it from this module would have pulled the
+// whole parquet browser into the homepage bundle.
+export { formatBytes };
 
 /** Lists longer than this are summarised rather than shipped whole. */
 export const MAX_LIST_ITEMS = 2048;
@@ -83,19 +90,6 @@ export function compareParquetEntries(
   const byGroup = GROUP_ORDER[a.group] - GROUP_ORDER[b.group];
   if (byGroup !== 0) return byGroup;
   return naturalCompare(a.relPath, b.relPath);
-}
-
-export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return "—";
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
 }
 
 function hexPreview(bytes: Uint8Array): string {

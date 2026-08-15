@@ -39,6 +39,7 @@ function makeDataset(
     total_episodes: 1,
     total_frames: 100,
     fps: 30,
+    sizeBytes: 0,
     thumbnailVideoUrl: null,
     integrity: INTEGRITY.ok,
     tags: { task: null, scene: null, objects: [] },

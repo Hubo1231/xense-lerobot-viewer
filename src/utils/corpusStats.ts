@@ -17,6 +17,8 @@ export type CorpusSegment = {
   hours: number;
   episodes: number;
   frames: number;
+  /** Bytes on disk across the source's datasets. */
+  bytes: number;
   /** Fraction of the corpus's total hours, 0–1. Zero when the corpus is empty. */
   share: number;
   /**
@@ -33,6 +35,8 @@ export type CorpusStats = {
   totalEpisodes: number;
   totalFrames: number;
   totalTasks: number;
+  /** Bytes on disk across the whole corpus. */
+  totalBytes: number;
   /** Segments sorted by hours, descending. Zero-hour groups are kept — a group
    *  that scanned but has no playable duration is a fact worth showing. */
   segments: CorpusSegment[];
@@ -52,10 +56,12 @@ export function computeCorpusStats(groups: DatasetGroup[]): CorpusStats {
     let hours = 0;
     let episodes = 0;
     let frames = 0;
+    let bytes = 0;
     for (const dataset of group.datasets) {
       hours += datasetHours(dataset);
       episodes += dataset.total_episodes || 0;
       frames += dataset.total_frames || 0;
+      bytes += dataset.sizeBytes || 0;
     }
     return {
       prefix: group.prefix,
@@ -63,6 +69,7 @@ export function computeCorpusStats(groups: DatasetGroup[]): CorpusStats {
       hours,
       episodes,
       frames,
+      bytes,
       share: 0,
       avgEpisodeSeconds: episodes > 0 ? (hours * 3600) / episodes : null,
     };
@@ -81,6 +88,7 @@ export function computeCorpusStats(groups: DatasetGroup[]): CorpusStats {
     totalEpisodes: segments.reduce((sum, s) => sum + s.episodes, 0),
     totalFrames: segments.reduce((sum, s) => sum + s.frames, 0),
     totalTasks: segments.reduce((sum, s) => sum + s.tasks, 0),
+    totalBytes: segments.reduce((sum, s) => sum + s.bytes, 0),
     segments,
   };
 }
