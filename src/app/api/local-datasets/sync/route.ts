@@ -4,6 +4,7 @@ import path from "node:path";
 import { resolveLocalDatasetRoot } from "@/lib/local-datasets-discovery";
 import {
   PythonUnavailableError,
+  pythonSpawnEnv,
   resolvePython,
   type ResolvedPython,
 } from "@/lib/python-runtime";
@@ -66,7 +67,7 @@ function spawnScript(
   return spawn(pythonBin, [scriptPath(), ...args], {
     cwd: process.cwd(),
     env: {
-      ...process.env,
+      ...pythonSpawnEnv(),
       // Belt and braces: the script also defaults this, but setting it here
       // means the mirror holds even if the script is run through a wrapper.
       HF_ENDPOINT: process.env.HF_ENDPOINT || HF_MIRROR,

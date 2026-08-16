@@ -78,6 +78,34 @@ interface EnvLike {
 
 const isWindows = process.platform === "win32";
 
+/**
+ * Environment for a spawned interpreter, with the two variables that can
+ * silently defeat the interpreter we just picked removed.
+ *
+ * `PYTHONPATH` is prepended to `sys.path` of *every* Python, whatever its
+ * version — so a sourced ROS setup (`/opt/ros/humble/.../python3.10/
+ * site-packages`, which is the normal state of a robotics workstation, this
+ * one included) injects 3.10 packages into a 3.12 venv. Same-named modules
+ * shadow the ones we installed, and a 3.10-built C extension imported into
+ * 3.12 fails outright.
+ *
+ * `PYTHONHOME` is worse: it overrides the interpreter's own prefix, which
+ * breaks a venv entirely.
+ *
+ * Neither is something `sync_hf_dataset.py` or `export_subtasks.py` wants —
+ * they import stdlib plus what the resolved environment holds, and nothing
+ * else. Stripping both is what makes "resolve the interpreter" actually mean
+ * "run against that interpreter's packages".
+ */
+export function pythonSpawnEnv(base: EnvLike = process.env): NodeJS.ProcessEnv {
+  // Cast rather than build: Next's ProcessEnv marks NODE_ENV required, which a
+  // structural copy of an EnvLike cannot prove it carries.
+  const env = { ...base } as NodeJS.ProcessEnv;
+  delete env.PYTHONPATH;
+  delete env.PYTHONHOME;
+  return env;
+}
+
 /** Interpreter path inside an env/venv directory. */
 export function interpreterIn(envDir: string): string {
   return isWindows
@@ -298,8 +326,11 @@ async function probe(
   return new Promise((resolve) => {
     let child;
     try {
+      // Probe under the same environment the real run will get, or a module
+      // visible only through PYTHONPATH would make an interpreter look usable.
       child = spawn(bin, ["-c", buildProbeScript(), ...required], {
         stdio: ["ignore", "pipe", "pipe"],
+        env: pythonSpawnEnv(),
       });
     } catch {
       resolve(null);

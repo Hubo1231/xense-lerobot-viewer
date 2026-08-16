@@ -206,6 +206,16 @@ Resolution is ordered, and the order is the contract:
 
 Step 3 is a fallback, not the strategy — it exists so a fresh clone works on a machine whose deps live in a conda env, without asking for setup first. It is deterministic (highest version of the first required module, then path order), it logs the interpreter it picked, and `PYTHON_BIN` overrides it. Probing uses `importlib.util.find_spec`, so heavy modules are never imported (a full scan of ~10 envs costs ~100 ms) and results are memoised for 5 minutes. When nothing on the machine qualifies, the error names both fixes (install, or set `PYTHON_BIN`) — don't downgrade it to a bare stack trace.
 
+**The intended setup is a project-local `.venv`** — it is the first candidate after `PYTHON_BIN`, needs no configuration, and keeps the scripts' dependencies out of whatever else the machine has:
+
+```
+python3.12 -m venv .venv && .venv/bin/pip install -r scripts/requirements.txt
+```
+
+`.venv/` is gitignored. Nothing needs activating: the routes address the interpreter by path, so an unactivated shell, a different conda env, or a `next dev` started from anywhere all resolve the same way.
+
+**`PYTHONPATH` and `PYTHONHOME` are stripped from every spawn** (`pythonSpawnEnv`, applied to the probe as well so it sees what the real run sees). `PYTHONPATH` is honoured by every Python regardless of version, so a sourced ROS setup — `/opt/ros/humble/.../python3.10/site-packages`, the normal state of a robotics workstation, this one included — prepends 3.10 packages to a 3.12 venv's `sys.path`, shadowing installed modules and crashing on any 3.10-built C extension. `PYTHONHOME` overrides the interpreter's prefix and breaks a venv outright. Neither is wanted by scripts that import stdlib plus their resolved environment and nothing else; without the strip, "resolve the interpreter" would not mean "run against that interpreter's packages".
+
 Both Python scripts also self-diagnose when run directly from the CLI: they report the missing dependency against `sys.executable` instead of letting the `ImportError` surface through an unrelated handler.
 
 ## Key files

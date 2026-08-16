@@ -8,6 +8,7 @@ import {
 } from "@/utils/datasetRoute";
 import {
   PythonUnavailableError,
+  pythonSpawnEnv,
   resolvePython,
   type ResolvedPython,
 } from "@/lib/python-runtime";
@@ -74,6 +75,7 @@ async function runExporter(datasetDir: string): Promise<{
     const py = python.bin;
     const child = spawn(py, [script, datasetDir, "--yes", "--json"], {
       cwd: process.cwd(),
+      env: pythonSpawnEnv(),
     });
 
     let stdout = "";

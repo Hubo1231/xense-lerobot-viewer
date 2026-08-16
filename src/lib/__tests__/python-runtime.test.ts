@@ -8,6 +8,7 @@ import {
   interpreterIn,
   isPinned,
   parseProbeOutput,
+  pythonSpawnEnv,
   rankProbes,
   satisfies,
   summarizeTried,
@@ -52,6 +53,28 @@ describe("candidatePythons", () => {
   test("deduplicates when the active venv is the project venv", () => {
     const list = candidatePythons({ VIRTUAL_ENV: "/repo/.venv" }, "/repo");
     expect(new Set(list).size).toBe(list.length);
+  });
+});
+
+describe("pythonSpawnEnv", () => {
+  test("strips PYTHONPATH so a sourced ROS setup cannot shadow the venv", () => {
+    const env = pythonSpawnEnv({
+      PYTHONPATH: "/opt/ros/humble/lib/python3.10/site-packages",
+      PATH: "/usr/bin",
+    });
+    expect("PYTHONPATH" in env).toBe(false);
+    expect(env.PATH).toBe("/usr/bin");
+  });
+
+  test("strips PYTHONHOME, which would break a venv outright", () => {
+    const env = pythonSpawnEnv({ PYTHONHOME: "/usr" });
+    expect("PYTHONHOME" in env).toBe(false);
+  });
+
+  test("does not mutate the environment it was given", () => {
+    const base = { PYTHONPATH: "/opt/ros" };
+    pythonSpawnEnv(base);
+    expect(base.PYTHONPATH).toBe("/opt/ros");
   });
 });
 

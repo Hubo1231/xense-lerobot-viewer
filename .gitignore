@@ -53,3 +53,6 @@ __pycache__/
 # Corpus history written by the homepage dashboard (lives under
 # LOCAL_DATASET_ROOT, which is normally outside the repo).
 .xense-viewer/
+
+# Local Python env for scripts/ (see scripts/requirements.txt)
+.venv/
