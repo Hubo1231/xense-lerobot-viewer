@@ -9,6 +9,7 @@ import {
   TAG_LIMITS,
   normalizeSingleTag,
 } from "@/lib/dataset-tags";
+import { useT } from "@/context/locale-context";
 
 type Props = {
   datasetRelativePath: string;
@@ -37,6 +38,7 @@ export default function DatasetTagsEditor({
   onClose,
   onSaved,
 }: Props) {
+  const t = useT();
   const [taskMode, setTaskMode] = useState<"preset" | "custom">(
     initialTags.task && !SUGGESTED_TASKS.includes(initialTags.task)
       ? "custom"
@@ -83,7 +85,7 @@ export default function DatasetTagsEditor({
       return;
     }
     if (objects.length >= TAG_LIMITS.MAX_OBJECTS) {
-      setError(`At most ${TAG_LIMITS.MAX_OBJECTS} objects per dataset.`);
+      setError(t("tags.maxObjects", { max: TAG_LIMITS.MAX_OBJECTS }));
       return;
     }
     setObjects((prev) => [...prev, v]);
@@ -135,7 +137,9 @@ export default function DatasetTagsEditor({
         onClick={(e) => e.stopPropagation()}
       >
         <header className="border-b border-white/10 bg-[var(--surface-1)]/60 px-5 py-3">
-          <h2 className="text-sm font-semibold text-slate-100">Edit tags</h2>
+          <h2 className="text-sm font-semibold text-slate-100">
+            {t("tags.title")}
+          </h2>
           <p
             className="mt-0.5 truncate font-mono text-xs text-slate-400"
             title={datasetRelativePath}
@@ -148,7 +152,7 @@ export default function DatasetTagsEditor({
           {/* Task */}
           <div>
             <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400">
-              Task
+              {t("tags.task")}
             </label>
             <div className="flex gap-2">
               {taskMode === "preset" ? (
@@ -166,13 +170,13 @@ export default function DatasetTagsEditor({
                   }}
                   className="flex-1 rounded border border-white/10 bg-[var(--surface-1)]/60 px-3 py-1.5 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none"
                 >
-                  <option value={NONE_VALUE}>(none)</option>
-                  {taskOptions.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
+                  <option value={NONE_VALUE}>{t("tags.none")}</option>
+                  {taskOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
                     </option>
                   ))}
-                  <option value={CUSTOM_VALUE}>+ Custom value…</option>
+                  <option value={CUSTOM_VALUE}>{t("tags.custom")}</option>
                 </select>
               ) : (
                 <>
@@ -180,7 +184,7 @@ export default function DatasetTagsEditor({
                     type="text"
                     value={task}
                     onChange={(e) => setTask(e.target.value)}
-                    placeholder="custom task name"
+                    placeholder={t("tags.customTask")}
                     autoFocus
                     className="flex-1 rounded border border-white/10 bg-[var(--surface-1)]/60 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
                   />
@@ -192,7 +196,7 @@ export default function DatasetTagsEditor({
                     }}
                     className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:text-slate-100"
                   >
-                    Cancel
+                    {t("common.cancel")}
                   </button>
                 </>
               )}
@@ -202,7 +206,7 @@ export default function DatasetTagsEditor({
           {/* Scene */}
           <div>
             <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400">
-              Scene
+              {t("tags.scene")}
             </label>
             <div className="flex gap-2">
               {sceneMode === "preset" ? (
@@ -220,13 +224,13 @@ export default function DatasetTagsEditor({
                   }}
                   className="flex-1 rounded border border-white/10 bg-[var(--surface-1)]/60 px-3 py-1.5 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none"
                 >
-                  <option value={NONE_VALUE}>(none)</option>
-                  {sceneOptions.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
+                  <option value={NONE_VALUE}>{t("tags.none")}</option>
+                  {sceneOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
                     </option>
                   ))}
-                  <option value={CUSTOM_VALUE}>+ Custom value…</option>
+                  <option value={CUSTOM_VALUE}>{t("tags.custom")}</option>
                 </select>
               ) : (
                 <>
@@ -234,7 +238,7 @@ export default function DatasetTagsEditor({
                     type="text"
                     value={scene}
                     onChange={(e) => setScene(e.target.value)}
-                    placeholder="custom scene name"
+                    placeholder={t("tags.customScene")}
                     autoFocus
                     className="flex-1 rounded border border-white/10 bg-[var(--surface-1)]/60 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
                   />
@@ -246,7 +250,7 @@ export default function DatasetTagsEditor({
                     }}
                     className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:text-slate-100"
                   >
-                    Cancel
+                    {t("common.cancel")}
                   </button>
                 </>
               )}
@@ -256,7 +260,10 @@ export default function DatasetTagsEditor({
           {/* Objects */}
           <div>
             <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400">
-              Objects ({objects.length}/{TAG_LIMITS.MAX_OBJECTS})
+              {t("tags.objects", {
+                count: objects.length,
+                max: TAG_LIMITS.MAX_OBJECTS,
+              })}
             </label>
             <div className="mb-2 flex flex-wrap gap-1.5">
               {objects.map((o) => (
@@ -269,7 +276,7 @@ export default function DatasetTagsEditor({
                     type="button"
                     onClick={() => removeObject(o)}
                     className="text-slate-400 hover:text-red-300"
-                    aria-label={`Remove ${o}`}
+                    aria-label={t("tags.removeAria", { value: o })}
                   >
                     ×
                   </button>
@@ -277,7 +284,7 @@ export default function DatasetTagsEditor({
               ))}
               {objects.length === 0 && (
                 <span className="text-xs italic text-slate-500">
-                  No objects yet
+                  {t("tags.noObjects")}
                 </span>
               )}
             </div>
@@ -294,7 +301,7 @@ export default function DatasetTagsEditor({
                   }
                 }}
                 list="object-suggestions"
-                placeholder="type and press Enter (e.g. cucumber)"
+                placeholder={t("tags.objectPlaceholder")}
                 className="flex-1 rounded border border-white/10 bg-[var(--surface-1)]/60 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
               />
               <datalist id="object-suggestions">
@@ -308,7 +315,7 @@ export default function DatasetTagsEditor({
                 disabled={!objectDraft.trim()}
                 className="rounded border border-white/10 bg-cyan-500/20 px-3 py-1 text-xs font-medium text-cyan-200 hover:bg-cyan-500/30 disabled:opacity-40"
               >
-                Add
+                {t("tags.add")}
               </button>
             </div>
           </div>
@@ -316,7 +323,10 @@ export default function DatasetTagsEditor({
           {/* Notes */}
           <div>
             <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400">
-              Notes ({notes.length}/{TAG_LIMITS.MAX_NOTES_LENGTH})
+              {t("tags.notes", {
+                count: notes.length,
+                max: TAG_LIMITS.MAX_NOTES_LENGTH,
+              })}
             </label>
             <textarea
               value={notes}
@@ -324,7 +334,7 @@ export default function DatasetTagsEditor({
                 setNotes(e.target.value.slice(0, TAG_LIMITS.MAX_NOTES_LENGTH))
               }
               rows={2}
-              placeholder="optional free-form notes"
+              placeholder={t("tags.notesPlaceholder")}
               className="w-full rounded border border-white/10 bg-[var(--surface-1)]/60 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
             />
           </div>
@@ -342,7 +352,7 @@ export default function DatasetTagsEditor({
             onClick={onClose}
             className="rounded border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:text-slate-100"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -350,7 +360,7 @@ export default function DatasetTagsEditor({
             disabled={saving}
             className="rounded bg-cyan-500/90 px-4 py-1.5 text-xs font-medium text-white hover:bg-cyan-400 disabled:opacity-50"
           >
-            {saving ? "Saving…" : "Save"}
+            {saving ? t("tags.saving") : t("tags.save")}
           </button>
         </footer>
       </div>

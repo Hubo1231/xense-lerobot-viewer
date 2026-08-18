@@ -31,8 +31,6 @@
   --color-surface-1: var(--surface-1);
   --color-surface-2: var(--surface-2);
   --color-accent: var(--accent);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
 html {
@@ -40,6 +38,11 @@ html {
 }
 
 body {
+  /* Inter carries no CJK glyphs; the fallbacks are what the Chinese UI renders
+     in. Without them the browser falls back per-glyph, usually to a serif. */
+  font-family:
+    var(--font-inter), "Noto Sans SC", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", system-ui, sans-serif;
   background: var(--bg);
   color: var(--text-primary);
   font-feature-settings:

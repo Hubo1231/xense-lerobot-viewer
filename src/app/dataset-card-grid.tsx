@@ -14,11 +14,14 @@ import {
   TrashStrip,
 } from "@/components/dataset-trash-controls";
 import HoverPlayVideo from "@/components/hover-play-video";
+import LanguageSwitcher from "@/components/language-switcher";
 import {
   compareDatasetsBySize,
   getDatasetTaskName,
 } from "@/utils/datasetGrouping";
 import { formatBytes } from "@/utils/byteSize";
+import { useLocale } from "@/context/locale-context";
+import type { MessageKey } from "@/i18n/messages";
 
 type DatasetCardGridProps = {
   root: string;
@@ -40,22 +43,30 @@ function formatTotalFrames(value: number): string {
   return String(value);
 }
 
-function describeIntegrity(integrity: DatasetIntegrity): {
+type Translate = (
+  key: MessageKey,
+  vars?: Record<string, string | number>,
+) => string;
+
+function describeIntegrity(
+  integrity: DatasetIntegrity,
+  t: Translate,
+): {
   label: string;
   reason: string;
   tone: "ok" | "warn" | "error";
 } {
   if (integrity.status === "ok") {
     return {
-      label: "Healthy",
-      reason: "data/ and videos/ present",
+      label: t("grid.healthOk"),
+      reason: t("grid.healthOkReason"),
       tone: "ok",
     };
   }
   if (integrity.status === "empty") {
     return {
-      label: "Empty",
-      reason: "info.json reports 0 episodes",
+      label: t("grid.healthEmpty"),
+      reason: t("grid.healthEmptyReason"),
       tone: "warn",
     };
   }
@@ -63,8 +74,10 @@ function describeIntegrity(integrity: DatasetIntegrity): {
   if (!integrity.hasData) missing.push("data/");
   if (!integrity.hasVideos) missing.push("videos/");
   return {
-    label: "Incomplete",
-    reason: `Missing on disk: ${missing.join(", ") || "data files"}`,
+    label: t("grid.healthIncomplete"),
+    reason: t("grid.healthIncompleteReason", {
+      missing: missing.join(", ") || t("grid.healthMissingFallback"),
+    }),
     tone: "error",
   };
 }
@@ -75,6 +88,7 @@ export default function DatasetCardGrid({
   datasets,
   onBack,
 }: DatasetCardGridProps) {
+  const { t, tpRich, tRich } = useLocale();
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [selectedRobot, setSelectedRobot] = useState<string>("all");
@@ -194,49 +208,51 @@ export default function DatasetCardGrid({
   return (
     <main className="px-8 py-10 max-w-7xl mx-auto">
       <header className="mb-8">
-        <button
-          type="button"
-          onClick={onBack}
-          className="group inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-[var(--surface-1)]/60 px-3 py-1.5 text-sm text-slate-300 transition-colors hover:border-cyan-400/40 hover:text-cyan-100"
-        >
-          <svg
-            className="h-4 w-4 transition-transform group-hover:-translate-x-0.5"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            aria-hidden
+        <div className="flex items-start justify-between gap-4">
+          <button
+            type="button"
+            onClick={onBack}
+            className="group inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-[var(--surface-1)]/60 px-3 py-1.5 text-sm text-slate-300 transition-colors hover:border-cyan-400/40 hover:text-cyan-100"
           >
-            <path
-              fillRule="evenodd"
-              d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
-              clipRule="evenodd"
-            />
-          </svg>
-          Datasets
-        </button>
+            <svg
+              className="h-4 w-4 transition-transform group-hover:-translate-x-0.5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden
+            >
+              <path
+                fillRule="evenodd"
+                d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+            {t("grid.back")}
+          </button>
+          <LanguageSwitcher />
+        </div>
         <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-100">
           {prefix}
         </h1>
         <p className="mt-2 text-sm text-slate-400">
-          Browsing <span className="font-mono text-cyan-200/90">{root}</span>
-          <span className="mx-2 text-slate-600">·</span>
-          {datasetsWithLiveTags.length} task
-          {datasetsWithLiveTags.length === 1 ? "" : "s"} in this dataset
+          {tpRich("grid.browsingLine", datasetsWithLiveTags.length, {
+            root: <span className="font-mono text-cyan-200/90">{root}</span>,
+          })}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            {healthCounts.ok} healthy
+            {t("grid.healthyCount", { count: healthCounts.ok })}
           </span>
           {healthCounts.incomplete > 0 && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-red-200">
               <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-              {healthCounts.incomplete} incomplete (missing data/videos)
+              {t("grid.incompleteCount", { count: healthCounts.incomplete })}
             </span>
           )}
           {healthCounts.empty > 0 && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-amber-200">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-              {healthCounts.empty} empty (0 episodes)
+              {t("grid.emptyCount", { count: healthCounts.empty })}
             </span>
           )}
         </div>
@@ -253,15 +269,28 @@ export default function DatasetCardGrid({
             <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793 4 13.172V16h2.828l7.379-7.379-2.828-2.828z" />
           </svg>
           <div>
-            Tag your tasks to organise by{" "}
-            <span className="font-medium text-violet-200">task</span>,{" "}
-            <span className="font-medium text-sky-200">scene</span>, and{" "}
-            <span className="font-medium text-slate-200">objects</span>. Click
-            the{" "}
-            <span className="rounded bg-black/40 px-1 font-medium text-slate-100">
-              ✎ Tags
-            </span>{" "}
-            button on any card to start.
+            {tRich("grid.tagHint", {
+              task: (
+                <span className="font-medium text-violet-200">
+                  {t("grid.wordTask")}
+                </span>
+              ),
+              scene: (
+                <span className="font-medium text-sky-200">
+                  {t("grid.wordScene")}
+                </span>
+              ),
+              objects: (
+                <span className="font-medium text-slate-200">
+                  {t("grid.wordObjects")}
+                </span>
+              ),
+              button: (
+                <span className="rounded bg-black/40 px-1 font-medium text-slate-100">
+                  ✎ {t("grid.tagsButton")}
+                </span>
+              ),
+            })}
           </div>
         </div>
       )}
@@ -269,7 +298,7 @@ export default function DatasetCardGrid({
       {(sortedTaskKeys.length > 0 || taskCounts.untagged > 0) && (
         <div className="mb-4 flex flex-wrap items-center gap-1.5">
           <span className="mr-1 text-[10px] font-medium uppercase tracking-wider text-slate-500">
-            Task
+            {t("grid.taskFilterLabel")}
           </span>
           <button
             type="button"
@@ -280,20 +309,22 @@ export default function DatasetCardGrid({
                 : "border-white/10 bg-[var(--surface-1)]/60 text-slate-300 hover:text-slate-100"
             }`}
           >
-            All ({datasetsWithLiveTags.length})
+            {t("grid.filterAll", { count: datasetsWithLiveTags.length })}
           </button>
-          {sortedTaskKeys.map((t) => (
+          {sortedTaskKeys.map((taskKey) => (
             <button
-              key={t}
+              key={taskKey}
               type="button"
-              onClick={() => setTaskFilter((prev) => (prev === t ? "all" : t))}
+              onClick={() =>
+                setTaskFilter((prev) => (prev === taskKey ? "all" : taskKey))
+              }
               className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                taskFilter === t
+                taskFilter === taskKey
                   ? "border-violet-400/60 bg-violet-500/30 text-violet-100"
                   : "border-violet-400/20 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20"
               }`}
             >
-              {t} ({taskCounts.perTask.get(t) ?? 0})
+              {taskKey} ({taskCounts.perTask.get(taskKey) ?? 0})
             </button>
           ))}
           {taskCounts.untagged > 0 && (
@@ -310,7 +341,7 @@ export default function DatasetCardGrid({
                   : "border-white/10 bg-[var(--surface-1)]/60 text-slate-400 hover:text-slate-200"
               }`}
             >
-              Untagged ({taskCounts.untagged})
+              {t("grid.filterUntagged", { count: taskCounts.untagged })}
             </button>
           )}
         </div>
@@ -336,7 +367,7 @@ export default function DatasetCardGrid({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter tasks by name or robot type"
+            placeholder={t("grid.filterPlaceholder")}
             className="w-full rounded-md border border-white/10 bg-[var(--surface-1)]/60 px-10 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
           />
         </div>
@@ -347,7 +378,7 @@ export default function DatasetCardGrid({
             className="rounded-md border border-white/10 bg-[var(--surface-1)]/60 px-3 py-2 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none"
           >
             <option value="all">
-              All robots ({datasetsWithLiveTags.length})
+              {t("grid.allRobots", { count: datasetsWithLiveTags.length })}
             </option>
             {robotTypes.map((robot) => {
               const count = datasetsWithLiveTags.filter(
@@ -364,9 +395,20 @@ export default function DatasetCardGrid({
         <div className="inline-flex overflow-hidden rounded-md border border-white/10 text-xs">
           {(
             [
-              { key: "all", label: `All (${datasetsWithLiveTags.length})` },
-              { key: "ok", label: `Healthy (${healthCounts.ok})` },
-              { key: "issues", label: `Issues (${healthCounts.issues})` },
+              {
+                key: "all",
+                label: t("grid.filterAll", {
+                  count: datasetsWithLiveTags.length,
+                }),
+              },
+              {
+                key: "ok",
+                label: t("grid.filterHealthy", { count: healthCounts.ok }),
+              },
+              {
+                key: "issues",
+                label: t("grid.filterIssues", { count: healthCounts.issues }),
+              },
             ] as { key: HealthFilter; label: string }[]
           ).map((opt) => (
             <button
@@ -389,12 +431,12 @@ export default function DatasetCardGrid({
 
       {filtered.length === 0 ? (
         <div className="rounded-md border border-white/10 bg-[var(--surface-1)]/40 p-10 text-center text-slate-400">
-          No tasks match the current filter.
+          {t("grid.noMatch")}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           {filtered.map((ds) => {
-            const health = describeIntegrity(ds.integrity);
+            const health = describeIntegrity(ds.integrity, t);
             const taskName = getDatasetTaskName(ds.relativePath);
             const borderTone =
               health.tone === "error"
@@ -441,8 +483,10 @@ export default function DatasetCardGrid({
                       e.stopPropagation();
                       setEditingDatasetKey(ds.encodedPath);
                     }}
-                    title="Edit tags (task, scene, objects)"
-                    aria-label={`Edit tags for ${ds.relativePath}`}
+                    title={t("grid.editTagsTitle")}
+                    aria-label={t("grid.editTagsAria", {
+                      path: ds.relativePath,
+                    })}
                     className="inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium text-slate-200 backdrop-blur-sm transition-colors hover:bg-cyan-500/90 hover:text-white"
                   >
                     <svg
@@ -453,7 +497,7 @@ export default function DatasetCardGrid({
                     >
                       <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793 4 13.172V16h2.828l7.379-7.379-2.828-2.828z" />
                     </svg>
-                    Tags
+                    {t("grid.tagsButton")}
                   </button>
                   <button
                     type="button"
@@ -462,8 +506,10 @@ export default function DatasetCardGrid({
                       e.stopPropagation();
                       setDeletingDatasetKey(ds.encodedPath);
                     }}
-                    title="Delete this dataset (moves it to the trash)"
-                    aria-label={`Delete ${ds.relativePath}`}
+                    title={t("grid.deleteTitle")}
+                    aria-label={t("grid.deleteAria", {
+                      path: ds.relativePath,
+                    })}
                     className="inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium text-slate-200 backdrop-blur-sm transition-colors hover:bg-red-500/90 hover:text-white"
                   >
                     <svg
@@ -478,7 +524,7 @@ export default function DatasetCardGrid({
                         clipRule="evenodd"
                       />
                     </svg>
-                    Delete
+                    {t("grid.deleteButton")}
                   </button>
                 </div>
 
@@ -532,16 +578,23 @@ export default function DatasetCardGrid({
                     <span className="rounded bg-white/10 px-1.5 py-0.5 text-slate-200">
                       {ds.codebase_version}
                     </span>
-                    <span className="tabular">{ds.total_episodes} ep</span>
+                    <span className="tabular">
+                      {t("grid.epCount", { count: ds.total_episodes })}
+                    </span>
                     {ds.total_frames > 0 && (
                       <span className="tabular text-slate-400">
-                        · {formatTotalFrames(ds.total_frames)} frames
+                        ·{" "}
+                        {t("grid.framesSuffix", {
+                          value: formatTotalFrames(ds.total_frames),
+                        })}
                       </span>
                     )}
                     {ds.sizeBytes > 0 && (
                       <span
                         className="tabular text-slate-400"
-                        title={`${ds.sizeBytes.toLocaleString("en-US")} bytes on disk`}
+                        title={t("grid.bytesOnDisk", {
+                          bytes: ds.sizeBytes.toLocaleString("en-US"),
+                        })}
                       >
                         · {formatBytes(ds.sizeBytes)}
                       </span>
@@ -554,7 +607,7 @@ export default function DatasetCardGrid({
                       {ds.tags.task && (
                         <span
                           className="rounded bg-violet-500/25 px-1.5 py-0.5 font-medium text-violet-100"
-                          title="task"
+                          title={t("grid.wordTask")}
                         >
                           {ds.tags.task}
                         </span>
@@ -562,7 +615,7 @@ export default function DatasetCardGrid({
                       {ds.tags.scene && (
                         <span
                           className="rounded bg-sky-500/20 px-1.5 py-0.5 text-sky-200"
-                          title="scene"
+                          title={t("grid.wordScene")}
                         >
                           @{ds.tags.scene}
                         </span>
@@ -571,7 +624,7 @@ export default function DatasetCardGrid({
                         <span
                           key={o}
                           className="rounded bg-white/10 px-1.5 py-0.5 text-slate-300"
-                          title="object"
+                          title={t("grid.wordObject")}
                         >
                           {o}
                         </span>
@@ -598,7 +651,7 @@ export default function DatasetCardGrid({
                       className="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-400"
                       onClick={(e) => e.preventDefault()}
                     >
-                      <span>Open</span>
+                      <span>{t("grid.open")}</span>
                       <input
                         type="number"
                         min={0}

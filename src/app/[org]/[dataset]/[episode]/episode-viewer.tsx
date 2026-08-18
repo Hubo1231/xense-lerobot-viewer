@@ -15,6 +15,8 @@ import { AnnotationsPanel } from "@/components/annotations-panel";
 import { AnnotationsTimeline } from "@/components/annotations-timeline";
 import { SubtaskPanel } from "@/components/subtask-panel";
 import Sidebar from "@/components/side-nav";
+import LanguageSwitcher from "@/components/language-switcher";
+import { useLocale, useT } from "@/context/locale-context";
 import StatsPanel from "@/components/stats-panel";
 import OverviewPanel from "@/components/overview-panel";
 import Loading from "@/components/loading-component";
@@ -157,13 +159,14 @@ export default function EpisodeViewer({
   dataset: string;
   episodeId: number;
 }) {
+  const t = useT();
   const [data, setData] = useState<EpisodeData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
 
   useEffect(() => {
     if (Number.isNaN(episodeId)) {
-      setError("Invalid episode id.");
+      setError(t("err.invalidEpisode"));
       setData(null);
       return;
     }
@@ -183,16 +186,16 @@ export default function EpisodeViewer({
       .catch((err) => {
         if (requestIdRef.current !== requestId) return;
         const message = err instanceof Error ? err.message : String(err);
-        setError(message || "Unknown error");
+        setError(message || t("err.unknown"));
         setData(null);
       });
-  }, [org, dataset, episodeId]);
+  }, [org, dataset, episodeId, t]);
 
   if (error) {
     return (
       <div className="flex h-screen items-center justify-center bg-[var(--bg)] text-red-300">
         <div className="panel-raised max-w-xl p-6 border-red-500/40">
-          <h2 className="text-xl font-medium mb-3">Something went wrong</h2>
+          <h2 className="text-xl font-medium mb-3">{t("err.title")}</h2>
           <p className="text-sm font-mono whitespace-pre-wrap text-red-200/90">
             {error}
           </p>
@@ -250,6 +253,7 @@ function EpisodeViewerInner({
   org?: string;
   dataset?: string;
 }) {
+  const { t, tRich } = useLocale();
   const {
     datasetInfo,
     episodeId,
@@ -613,43 +617,44 @@ function EpisodeViewerInner({
         <Link
           href="/"
           className="flex shrink-0 items-center border-r border-white/5 px-5 py-3 text-base font-bold tracking-tight transition-opacity hover:opacity-80"
-          title="Xense Robotics · back to dataset browser"
+          title={t("viewer.brandTitle")}
         >
           <span className="bg-gradient-to-r from-cyan-300 to-sky-300 bg-clip-text text-transparent">
-            Xense
+            {t("brand.part1")}
           </span>
-          <span className="text-emerald-400">Robotics</span>
+          <span className="text-emerald-400">{t("brand.part2")}</span>
         </Link>
-        {renderTab("episodes", "Episodes")}
+        {renderTab("episodes", t("viewer.tab.episodes"))}
         {renderTab(
           "annotations",
-          "Annotations",
-          "Edit subtask / plan / memory / interjection / VQA atoms (lerobot v3.1 schema)",
+          t("viewer.tab.annotations"),
+          t("viewer.tab.annotationsTitle"),
         )}
         {hasURDFSupport(datasetInfo.robot_type) &&
           datasetInfo.codebase_version >= "v3.0" &&
-          renderTab("urdf", "3D Replay")}
-        {renderTab("statistics", "Statistics")}
-        {renderTab("filtering", "Filtering")}
-        {renderTab("frames", "Frames")}
-        {renderTab("insights", "Action Insights")}
+          renderTab("urdf", t("viewer.tab.urdf"))}
+        {renderTab("statistics", t("viewer.tab.statistics"))}
+        {renderTab("filtering", t("viewer.tab.filtering"))}
+        {renderTab("frames", t("viewer.tab.frames"))}
+        {renderTab("insights", t("viewer.tab.insights"))}
         {renderTab(
           "doctor",
-          "Doctor",
-          "Run read-only TypeScript dataset quality diagnostics",
+          t("viewer.tab.doctor"),
+          t("viewer.tab.doctorTitle"),
         )}
         {renderTab(
           "parquet",
-          "Parquet",
-          "Browse the raw contents of any parquet file in this dataset",
+          t("viewer.tab.parquet"),
+          t("viewer.tab.parquetTitle"),
         )}
-        <div className="ml-auto flex shrink-0 items-center gap-1 pr-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2 pr-3">
           <Link
             href="/"
-            className="inline-flex items-center px-4 py-3 text-xs font-medium tracking-wide uppercase text-slate-400 transition-colors hover:text-slate-100"
+            className="inline-flex items-center px-2 py-3 text-xs font-medium tracking-wide uppercase text-slate-400 transition-colors hover:text-slate-100"
           >
-            Home
+            {t("viewer.home")}
           </Link>
+          <LanguageSwitcher size="bar" />
         </div>
       </div>
 
@@ -699,7 +704,7 @@ function EpisodeViewerInner({
                     {datasetDisplayName}
                   </p>
                   <p className="text-[10px] uppercase tracking-wide text-slate-500 mt-0.5 tabular">
-                    Episode · {episodeId}
+                    {t("ep.episodeLabel", { id: episodeId })}
                   </p>
                   {encodedDatasetPath &&
                     (tags.task || tags.scene || tags.objects.length > 0) && (
@@ -707,7 +712,7 @@ function EpisodeViewerInner({
                         {tags.task && (
                           <span
                             className="rounded bg-violet-500/25 px-1.5 py-0.5 font-medium text-violet-100"
-                            title="task"
+                            title={t("grid.wordTask")}
                           >
                             {tags.task}
                           </span>
@@ -715,7 +720,7 @@ function EpisodeViewerInner({
                         {tags.scene && (
                           <span
                             className="rounded bg-sky-500/20 px-1.5 py-0.5 text-sky-200"
-                            title="scene"
+                            title={t("grid.wordScene")}
                           >
                             @{tags.scene}
                           </span>
@@ -724,7 +729,7 @@ function EpisodeViewerInner({
                           <span
                             key={o}
                             className="rounded bg-white/10 px-1.5 py-0.5 text-slate-300"
-                            title="object"
+                            title={t("grid.wordObject")}
                           >
                             {o}
                           </span>
@@ -736,7 +741,7 @@ function EpisodeViewerInner({
                   <button
                     type="button"
                     onClick={() => setTagsEditorOpen(true)}
-                    title="Edit tags (task, scene, objects)"
+                    title={t("grid.editTagsTitle")}
                     className="inline-flex shrink-0 items-center gap-1 rounded-md border border-white/10 bg-[var(--surface-1)]/60 px-2.5 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:border-cyan-400/50 hover:text-cyan-100"
                   >
                     <svg
@@ -747,7 +752,7 @@ function EpisodeViewerInner({
                     >
                       <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793 4 13.172V16h2.828l7.379-7.379-2.828-2.828z" />
                     </svg>
-                    Edit tags
+                    {t("ep.editTags")}
                   </button>
                 )}
               </div>
@@ -764,7 +769,7 @@ function EpisodeViewerInner({
               {task && (
                 <div className="mb-6 panel p-4">
                   <p className="text-[10px] uppercase tracking-wide text-slate-500">
-                    Language Instruction
+                    {t("ep.languageInstruction")}
                   </p>
                   <div className="mt-1.5 space-y-0.5 text-sm text-slate-200">
                     {task
@@ -807,7 +812,7 @@ function EpisodeViewerInner({
                   {datasetInfo.repoId}
                 </p>
                 <p className="text-[10px] uppercase tracking-wide text-slate-500 tabular">
-                  Episode · {episodeId}
+                  {t("ep.episodeLabel", { id: episodeId })}
                 </p>
               </div>
               {videosInfo.length > 0 && (
@@ -817,17 +822,14 @@ function EpisodeViewerInner({
                 />
               )}
               <div className="grounding-intro">
-                <span className="section-kicker">Grounded VQA</span>
+                <span className="section-kicker">{t("ep.groundedVqa")}</span>
                 <ul>
+                  <li>{t("ep.vqaHint1")}</li>
                   <li>
-                    Draw directly on the active video to create visual
-                    questions. Drag for a bounding box, click for a point. The
-                    camera is detected from the video you draw on.
-                  </li>
-                  <li>
-                    Drag on any video to add a bbox question. Click any video to
-                    add a keypoint question. Confirm the popup with <kbd>↵</kbd>
-                    , or cancel with <kbd>Esc</kbd>.
+                    {tRich("ep.vqaHint2", {
+                      enter: <kbd>↵</kbd>,
+                      esc: <kbd>Esc</kbd>,
+                    })}
                   </li>
                 </ul>
               </div>

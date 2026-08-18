@@ -20,18 +20,20 @@ import type {
   JerkyEpisode,
   AggAlignment,
 } from "@/app/[org]/[dataset]/[episode]/fetch-data";
+import { useLocale, useT } from "@/context/locale-context";
 
 const FullscreenCtx = React.createContext(false);
 const useIsFullscreen = () => React.useContext(FullscreenCtx);
 
 function InfoToggle({ children }: { children: React.ReactNode }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   return (
     <>
       <button
         onClick={() => setOpen((v) => !v)}
         className="p-0.5 rounded-full text-slate-500 hover:text-slate-300 transition-colors shrink-0"
-        title="Toggle description"
+        title={t("insights.toggleDesc")}
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -55,6 +57,7 @@ function InfoToggle({ children }: { children: React.ReactNode }) {
 }
 
 function FullscreenWrapper({ children }: { children: React.ReactNode }) {
+  const t = useT();
   const [fs, setFs] = useState(false);
 
   useEffect(() => {
@@ -71,7 +74,7 @@ function FullscreenWrapper({ children }: { children: React.ReactNode }) {
       <button
         onClick={() => setFs((v) => !v)}
         className="absolute top-3 right-3 z-10 p-1.5 rounded bg-white/5/60 hover:bg-white/5 text-slate-400 hover:text-slate-200 transition-colors backdrop-blur-sm"
-        title={fs ? "Exit fullscreen" : "Fullscreen"}
+        title={fs ? t("insights.exitFullscreen") : t("insights.fullscreen")}
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -106,7 +109,7 @@ function FullscreenWrapper({ children }: { children: React.ReactNode }) {
           <button
             onClick={() => setFs(false)}
             className="fixed top-4 right-4 z-50 p-2 rounded bg-white/5/80 hover:bg-white/5 text-slate-300 hover:text-white transition-colors"
-            title="Exit fullscreen (Esc)"
+            title={t("insights.exitFullscreenEsc")}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -139,12 +142,13 @@ function FullscreenWrapper({ children }: { children: React.ReactNode }) {
 }
 
 function FlagBtn({ id }: { id: number }) {
+  const t = useT();
   const { has, toggle } = useFlaggedEpisodes();
   const flagged = has(id);
   return (
     <button
       onClick={() => toggle(id)}
-      title={flagged ? "Unflag episode" : "Flag for review"}
+      title={flagged ? t("common.unflagEpisode") : t("common.flagForReview")}
       className={`p-0.5 rounded transition-colors ${flagged ? "text-cyan-300" : "text-slate-600 hover:text-slate-400"}`}
     >
       <svg
@@ -166,6 +170,7 @@ function FlagBtn({ id }: { id: number }) {
 }
 
 function FlagAllBtn({ ids, label }: { ids: number[]; label?: string }) {
+  const t = useT();
   const { addMany } = useFlaggedEpisodes();
   return (
     <button
@@ -186,7 +191,7 @@ function FlagAllBtn({ ids, label }: { ids: number[]; label?: string }) {
         <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
         <line x1="4" y1="22" x2="4" y2="15" />
       </svg>
-      {label ?? "Flag all"}
+      {label ?? t("filter.flagAll")}
     </button>
   );
 }
@@ -259,6 +264,7 @@ function AutocorrelationSection({
   agg?: AggAutocorrelation | null;
   numEpisodes?: number;
 }) {
+  const { t, tRich } = useLocale();
   const isFs = useIsFullscreen();
   const actionKeys = useMemo(
     () => (data.length > 0 ? getActionKeys(data[0]) : []),
@@ -309,8 +315,8 @@ function AutocorrelationSection({
     fallback ?? { chartData: [], suggestedChunk: null, shortKeys: [] };
   const isAgg = !!agg;
   const numEpisodesLabel = isAgg
-    ? ` (${numEpisodes} episodes sampled)`
-    : " (current episode)";
+    ? ` (${t("insights.scopeSampled", { count: numEpisodes ?? 0 })})`
+    : ` (${t("insights.scopeCurrent")})`;
 
   const yDomain = useMemo(() => {
     if (chartData.length === 0 || shortKeys.length === 0)
@@ -326,41 +332,41 @@ function AutocorrelationSection({
   }, [chartData, shortKeys]);
 
   if (shortKeys.length === 0)
-    return <p className="text-slate-500 italic">No action columns found.</p>;
+    return <p className="text-slate-500 italic">{t("insights.acNoColumns")}</p>;
 
   return (
     <div className="bg-[var(--surface-1)]/60 rounded-lg p-5 border border-white/10 space-y-4">
       <div>
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold text-slate-200">
-            Action Autocorrelation
+            {t("insights.acTitle")}
             <span className="text-xs text-slate-500 ml-2 font-normal">
               {numEpisodesLabel}
             </span>
           </h3>
           <InfoToggle>
             <p className="text-xs text-slate-400">
-              Shows how correlated each action dimension is with itself over
-              increasing time lags. Where autocorrelation drops below 0.5
-              suggests a{" "}
-              <span className="text-cyan-300 font-medium">
-                natural action chunk boundary
-              </span>{" "}
-              — actions beyond this lag are essentially independent, so
-              executing them open-loop offers diminishing returns.
+              {tRich("insights.acDesc", {
+                boundary: (
+                  <span className="text-cyan-300 font-medium">
+                    {t("insights.acBoundary")}
+                  </span>
+                ),
+              })}
               <br />
               <span className="text-slate-500">
-                Grounded in the theoretical result that chunk length should
-                scale logarithmically with system stability constants (
-                <a
-                  href="https://arxiv.org/abs/2507.09061"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:text-slate-300"
-                >
-                  Zhang et al., 2025
-                </a>
-                , Theorem 1).
+                {tRich("insights.acTheory", {
+                  link: (
+                    <a
+                      href="https://arxiv.org/abs/2507.09061"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:text-slate-300"
+                    >
+                      Zhang et al., 2025
+                    </a>
+                  ),
+                })}
               </span>
             </p>
           </InfoToggle>
@@ -374,12 +380,13 @@ function AutocorrelationSection({
           </span>
           <div>
             <p className="text-sm text-cyan-200 font-medium">
-              Suggested chunk length: {suggestedChunk} steps (
-              {(suggestedChunk / fps).toFixed(2)}s)
+              {t("insights.acSuggested", {
+                steps: suggestedChunk,
+                seconds: (suggestedChunk / fps).toFixed(2),
+              })}
             </p>
             <p className="text-xs text-slate-400">
-              Median lag where autocorrelation drops below 0.5 across action
-              dimensions
+              {t("insights.acSuggestedDesc")}
             </p>
           </div>
         </div>
@@ -397,7 +404,7 @@ function AutocorrelationSection({
               dataKey="lag"
               stroke="#94a3b8"
               label={{
-                value: "Lag (steps)",
+                value: t("insights.lagAxis"),
                 position: "insideBottom",
                 offset: -8,
                 fill: "#94a3b8",
@@ -416,7 +423,10 @@ function AutocorrelationSection({
                 borderRadius: 6,
               }}
               labelFormatter={(v) =>
-                `Lag ${v} (${(Number(v) / fps).toFixed(2)}s)`
+                t("insights.lagTooltip", {
+                  lag: String(v),
+                  seconds: (Number(v) / fps).toFixed(2),
+                })
               }
               formatter={(v: number) => v.toFixed(3)}
             />
@@ -473,6 +483,7 @@ function ActionVelocitySection({
   numEpisodes?: number;
   jerkyEpisodes?: JerkyEpisode[];
 }) {
+  const { t, tp, tRich } = useLocale();
   const actionKeys = useMemo(
     () => (data.length > 0 ? getActionKeys(data[0]) : []),
     [data],
@@ -572,109 +583,148 @@ function ActionVelocitySection({
     const jerkyNonGripper = jerky.filter((s) => !isGripper(s.name));
     const jerkyGripper = jerky.filter((s) => isGripper(s.name));
 
-    let verdict: { label: string; color: string };
+    // `kind` is the branch key, never the label — the label is translated and
+    // comparing against it would silently break the tip below in Chinese.
+    let verdict: {
+      kind: "na" | "smooth" | "moderate" | "jerky";
+      label: string;
+      color: string;
+    };
     if (active.length === 0) {
-      verdict = { label: "N/A", color: "text-zinc-400" };
+      verdict = {
+        kind: "na",
+        label: t("insights.verdictNa"),
+        color: "text-zinc-400",
+      };
     } else {
       const smoothRatio = smooth.length / active.length;
       if (smoothRatio >= 0.6 && jerkyNonGripper.length === 0)
-        verdict = { label: "Smooth", color: "text-green-400" };
+        verdict = {
+          kind: "smooth",
+          label: t("insights.verdictSmooth"),
+          color: "text-green-400",
+        };
       else if (jerkyNonGripper.length <= 2 && smoothRatio >= 0.3)
-        verdict = { label: "Moderate", color: "text-yellow-400" };
-      else verdict = { label: "Jerky", color: "text-red-400" };
+        verdict = {
+          kind: "moderate",
+          label: t("insights.verdictModerate"),
+          color: "text-yellow-400",
+        };
+      else
+        verdict = {
+          kind: "jerky",
+          label: t("insights.verdictJerky"),
+          color: "text-red-400",
+        };
     }
 
     const lines: string[] = [];
+    const names = (group: typeof stats) =>
+      group.map((entry) => entry.name).join(", ");
     if (smooth.length > 0)
       lines.push(
-        `${smooth.length} smooth (${smooth.map((s) => s.name).join(", ")})`,
+        t("insights.lineSmooth", {
+          count: smooth.length,
+          names: names(smooth),
+        }),
       );
     if (moderate.length > 0)
       lines.push(
-        `${moderate.length} moderate (${moderate.map((s) => s.name).join(", ")})`,
+        t("insights.lineModerate", {
+          count: moderate.length,
+          names: names(moderate),
+        }),
       );
     if (jerkyNonGripper.length > 0)
       lines.push(
-        `${jerkyNonGripper.length} jerky (${jerkyNonGripper.map((s) => s.name).join(", ")})`,
+        t("insights.lineJerky", {
+          count: jerkyNonGripper.length,
+          names: names(jerkyNonGripper),
+        }),
       );
     if (jerkyGripper.length > 0)
-      lines.push(
-        `${jerkyGripper.length} gripper${jerkyGripper.length > 1 ? "s" : ""} jerky — expected for binary open/close`,
-      );
+      lines.push(tp("insights.lineGripper", jerkyGripper.length));
     if (excluded.length > 0) {
       const discreteOnly = excluded.filter((s) => s.discrete);
       const inactiveOnly = excluded.filter((s) => s.inactive && !s.discrete);
       const parts: string[] = [];
       if (discreteOnly.length > 0)
         parts.push(
-          `${discreteOnly.length} discrete (${discreteOnly.map((s) => s.name).join(", ")})`,
+          t("insights.lineDiscrete", {
+            count: discreteOnly.length,
+            names: names(discreteOnly),
+          }),
         );
       if (inactiveOnly.length > 0)
         parts.push(
-          `${inactiveOnly.length} inactive (${inactiveOnly.map((s) => s.name).join(", ")})`,
+          t("insights.lineInactive", {
+            count: inactiveOnly.length,
+            names: names(inactiveOnly),
+          }),
         );
-      lines.push(`${parts.join("; ")} — excluded from verdict`);
+      lines.push(t("insights.lineExcluded", { parts: parts.join("; ") }));
     }
 
-    let tip: string;
-    if (verdict.label === "N/A")
-      tip = "All motors are inactive or discrete — no motors to evaluate.";
-    else if (verdict.label === "Smooth")
-      tip = "Actions are consistent — longer action chunks should work well.";
-    else if (verdict.label === "Moderate")
-      tip =
-        "Some dimensions show abrupt changes. Consider moderate chunk sizes.";
-    else
-      tip =
-        "Many dimensions are jerky. Use shorter action chunks and consider filtering outlier episodes.";
+    const tip = t(
+      verdict.kind === "na"
+        ? "insights.tipNa"
+        : verdict.kind === "smooth"
+          ? "insights.tipSmooth"
+          : verdict.kind === "moderate"
+            ? "insights.tipModerate"
+            : "insights.tipJerky",
+    );
 
     return { verdict, lines, tip };
-  }, [stats, maxStd]);
+  }, [stats, maxStd, t, tp]);
 
   if (stats.length === 0)
-    return (
-      <p className="text-slate-500 italic">
-        No action data for velocity analysis.
-      </p>
-    );
+    return <p className="text-slate-500 italic">{t("insights.avNoData")}</p>;
 
   return (
     <div className="bg-[var(--surface-1)]/60 rounded-lg p-5 border border-white/10 space-y-4">
       <div>
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold text-slate-200">
-            Action Velocity (Δa) — Smoothness Proxy
+            {t("insights.avTitle")}
             <span className="text-xs text-slate-500 ml-2 font-normal">
               {isAgg
-                ? `(${numEpisodes} episodes sampled)`
-                : "(current episode)"}
+                ? `(${t("insights.scopeSampled", { count: numEpisodes ?? 0 })})`
+                : `(${t("insights.scopeCurrent")})`}
             </span>
           </h3>
           <InfoToggle>
             <p className="text-xs text-slate-400">
-              Shows the distribution of frame-to-frame action changes (Δa = a
-              <sub>t+1</sub> − a<sub>t</sub>) for each dimension. A{" "}
-              <span className="text-green-400">
-                tight distribution around zero
-              </span>{" "}
-              means smooth, predictable control — the system is likely stable
-              and benefits from longer action chunks.
-              <span className="text-red-400"> Fat tails or high std</span>{" "}
-              indicate jerky demonstrations, suggesting shorter chunks and
-              potentially beneficial noise injection.
+              {tRich("insights.avDesc1", {
+                tPlus1: <sub>t+1</sub>,
+                t: <sub>t</sub>,
+                tight: (
+                  <span className="text-green-400">
+                    {t("insights.avTight")}
+                  </span>
+                ),
+              })}{" "}
+              {tRich("insights.avDesc2", {
+                fat: (
+                  <span className="text-red-400">{t("insights.avFat")}</span>
+                ),
+              })}
               <br />
               <span className="text-slate-500">
-                Relates to the Lipschitz constant L<sub>π</sub> and smoothness C
-                <sub>π</sub> in{" "}
-                <a
-                  href="https://arxiv.org/abs/2507.09061"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:text-slate-300"
-                >
-                  Zhang et al. (2025)
-                </a>
-                , which govern compounding error bounds (Assumptions 3.1, 4.1).
+                {tRich("insights.avTheory", {
+                  pi: <sub>π</sub>,
+                  pi2: <sub>π</sub>,
+                  link: (
+                    <a
+                      href="https://arxiv.org/abs/2507.09061"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:text-slate-300"
+                    >
+                      Zhang et al. (2025)
+                    </a>
+                  ),
+                })}
               </span>
             </p>
           </InfoToggle>
@@ -691,11 +741,11 @@ function ActionVelocitySection({
           const dimmed = !!s.inactive || !!s.discrete;
           const tag =
             s.inactive && s.discrete
-              ? "inactive & discrete"
+              ? t("insights.tagInactiveDiscrete")
               : s.discrete
-                ? "discrete"
+                ? t("insights.tagDiscrete")
                 : s.inactive
-                  ? "inactive"
+                  ? t("insights.tagInactive")
                   : null;
           return (
             <div
@@ -726,7 +776,7 @@ function ActionVelocitySection({
                 viewBox={`0 0 ${s.bins.length} ${barH}`}
                 preserveAspectRatio="none"
                 className="h-7 rounded"
-                aria-label={`Δa distribution for ${s.name}`}
+                aria-label={t("insights.avHistAria", { name: s.name })}
               >
                 {[...s.bins].map((count, bi) => {
                   const h = maxBinCount > 0 ? (count / maxBinCount) * barH : 0;
@@ -766,7 +816,7 @@ function ActionVelocitySection({
       {insight && (
         <div className="bg-[var(--surface-0)]/60 rounded-md px-4 py-3 border border-white/10/60 space-y-1.5">
           <p className="text-sm font-medium text-slate-200">
-            Overall:{" "}
+            {t("insights.overall")}{" "}
             <span className={insight.verdict.color}>
               {insight.verdict.label}
             </span>
@@ -788,6 +838,7 @@ function ActionVelocitySection({
 }
 
 function JerkyEpisodesList({ episodes }: { episodes: JerkyEpisode[] }) {
+  const t = useT();
   const [showAll, setShowAll] = useState(false);
   const display = showAll ? episodes : episodes.slice(0, 15);
 
@@ -795,9 +846,9 @@ function JerkyEpisodesList({ episodes }: { episodes: JerkyEpisode[] }) {
     <div className="bg-[var(--surface-0)]/60 rounded-md px-4 py-3 border border-white/10/60 space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-slate-200">
-          Most Jerky Episodes{" "}
+          {t("insights.jerkyTitle")}{" "}
           <span className="text-xs text-slate-500 font-normal">
-            sorted by mean |Δa|
+            {t("insights.jerkySortedBy")}
           </span>
         </p>
         <div className="flex items-center gap-3">
@@ -807,7 +858,9 @@ function JerkyEpisodesList({ episodes }: { episodes: JerkyEpisode[] }) {
               onClick={() => setShowAll((v) => !v)}
               className="text-xs text-slate-400 hover:text-slate-200 transition-colors"
             >
-              {showAll ? "Show top 15" : `Show all ${episodes.length}`}
+              {showAll
+                ? t("insights.showTop15")
+                : t("insights.showAllN", { count: episodes.length })}
             </button>
           )}
         </div>
@@ -817,8 +870,8 @@ function JerkyEpisodesList({ episodes }: { episodes: JerkyEpisode[] }) {
           <thead>
             <tr className="text-slate-500 border-b border-white/10">
               <th className="w-5 py-1" />
-              <th className="text-left py-1 pr-3">Episode</th>
-              <th className="text-right py-1">Mean |Δa|</th>
+              <th className="text-left py-1 pr-3">{t("insights.thEpisode")}</th>
+              <th className="text-right py-1">{t("insights.thMeanDelta")}</th>
             </tr>
           </thead>
           <tbody>
@@ -830,7 +883,9 @@ function JerkyEpisodesList({ episodes }: { episodes: JerkyEpisode[] }) {
                 <td className="py-1">
                   <FlagBtn id={e.episodeIndex} />
                 </td>
-                <td className="py-1 pr-3">ep {e.episodeIndex}</td>
+                <td className="py-1 pr-3">
+                  {t("common.epShort", { index: e.episodeIndex })}
+                </td>
                 <td className="py-1 text-right tabular-nums">
                   {e.meanAbsDelta.toFixed(4)}
                 </td>
@@ -852,6 +907,7 @@ function VarianceHeatmap({
   data: CrossEpisodeVarianceData | null;
   loading: boolean;
 }) {
+  const { t, tRich } = useLocale();
   const isFs = useIsFullscreen();
 
   if (loading) {
@@ -876,7 +932,7 @@ function VarianceHeatmap({
               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
             />
           </svg>
-          Loading cross-episode data (sampled up to 500 episodes)…
+          {t("insights.hmLoading")}
         </div>
       </div>
     );
@@ -886,10 +942,10 @@ function VarianceHeatmap({
     return (
       <div className="bg-[var(--surface-1)]/60 rounded-lg p-5 border border-white/10">
         <h3 className="text-sm font-semibold text-slate-200 mb-2">
-          Cross-Episode Action Variance
+          {t("insights.hmTitle")}
         </h3>
         <p className="text-slate-500 italic text-sm">
-          Not enough episodes or no action data to compute variance.
+          {t("insights.hmNoData")}
         </p>
       </div>
     );
@@ -928,34 +984,35 @@ function VarianceHeatmap({
       <div>
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold text-slate-200">
-            Cross-Episode Action Variance
+            {t("insights.hmTitle")}
             <span className="text-xs text-slate-500 ml-2 font-normal">
-              ({numEpisodes} episodes sampled)
+              ({t("insights.scopeSampled", { count: numEpisodes })})
             </span>
           </h3>
           <InfoToggle>
             <p className="text-xs text-slate-400">
-              Shows how much each action dimension varies across episodes at
-              each point in time (normalized 0–100%).
-              <span className="text-cyan-300"> High-variance regions</span>{" "}
-              indicate multi-modal or inconsistent demonstrations — generative
-              policies (diffusion, flow-matching) and action chunking help here
-              by modeling multiple modes.
-              <span className="text-blue-400"> Low-variance regions</span>{" "}
-              indicate consistent behavior across demonstrations.
+              {tRich("insights.hmDesc", {
+                high: (
+                  <span className="text-cyan-300">{t("insights.hmHigh")}</span>
+                ),
+                low: (
+                  <span className="text-blue-400">{t("insights.hmLow")}</span>
+                ),
+              })}
               <br />
               <span className="text-slate-500">
-                Relates to the &quot;coverage&quot; discussion in{" "}
-                <a
-                  href="https://arxiv.org/abs/2507.09061"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:text-slate-300"
-                >
-                  Zhang et al. (2025)
-                </a>{" "}
-                — regions with low variance may lack the exploratory coverage
-                needed to prevent compounding errors (Section 4).
+                {tRich("insights.hmTheory", {
+                  link: (
+                    <a
+                      href="https://arxiv.org/abs/2507.09061"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:text-slate-300"
+                    >
+                      Zhang et al. (2025)
+                    </a>
+                  ),
+                })}
               </span>
             </p>
           </InfoToggle>
@@ -977,7 +1034,13 @@ function VarianceHeatmap({
                 stroke="#1e293b"
                 strokeWidth={0.5}
               >
-                <title>{`${shortName(actionNames[di])} @ ${(timeBins[bi] * 100).toFixed(0)}%: var=${v.toFixed(5)}`}</title>
+                <title>
+                  {t("insights.hmCellTitle", {
+                    name: shortName(actionNames[di]),
+                    percent: (timeBins[bi] * 100).toFixed(0),
+                    value: v.toFixed(5),
+                  })}
+                </title>
               </rect>
             )),
           )}
@@ -1020,7 +1083,7 @@ function VarianceHeatmap({
             className="fill-slate-500"
             fontSize={10}
           >
-            Episode progress
+            {t("insights.hmProgress")}
           </text>
 
           {/* Color bar */}
@@ -1046,7 +1109,7 @@ function VarianceHeatmap({
             fontSize={8}
             dominantBaseline="central"
           >
-            high
+            {t("insights.hmHighLabel")}
           </text>
           <text
             x={labelW + numBins * cellW + 34}
@@ -1055,7 +1118,7 @@ function VarianceHeatmap({
             fontSize={8}
             dominantBaseline="central"
           >
-            low
+            {t("insights.hmLowLabel")}
           </text>
         </svg>
       </div>
@@ -1072,6 +1135,7 @@ function SpeedVarianceSection({
   distribution: SpeedDistEntry[];
   numEpisodes: number;
 }) {
+  const { t, tRich } = useLocale();
   const isFs = useIsFullscreen();
   const { speeds, mean, std, cv, median, bins, lo, binW, maxBin, verdict } =
     useMemo(() => {
@@ -1095,21 +1159,21 @@ function SpeedVarianceSection({
       let v: { label: string; color: string; tip: string };
       if (c < 0.2)
         v = {
-          label: "Consistent",
+          label: t("insights.svConsistent"),
           color: "text-green-400",
-          tip: "Demonstrators execute at similar speeds — no velocity normalization needed.",
+          tip: t("insights.svTipConsistent"),
         };
       else if (c < 0.4)
         v = {
-          label: "Moderate variance",
+          label: t("insights.svModerate"),
           color: "text-yellow-400",
-          tip: "Some speed variation across demonstrators. Consider velocity normalization for best results.",
+          tip: t("insights.svTipModerate"),
         };
       else
         v = {
-          label: "High variance",
+          label: t("insights.svHigh"),
           color: "text-red-400",
-          tip: "Large speed differences between demonstrations. Velocity normalization before training is strongly recommended.",
+          tip: t("insights.svTipHigh"),
         };
 
       return {
@@ -1124,7 +1188,7 @@ function SpeedVarianceSection({
         maxBin: Math.max(...b),
         verdict: v,
       };
-    }, [distribution]);
+    }, [distribution, t]);
 
   if (speeds.length < 3) return null;
 
@@ -1136,26 +1200,23 @@ function SpeedVarianceSection({
       <div>
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold text-slate-200">
-            Demonstrator Speed Variance
+            {t("insights.svTitle")}
             <span className="text-xs text-slate-500 ml-2 font-normal">
-              ({numEpisodes} episodes)
+              ({t("insights.svScope", { count: numEpisodes })})
             </span>
           </h3>
           <InfoToggle>
             <p className="text-xs text-slate-400">
-              Distribution of average execution speed (mean ‖Δa<sub>t</sub>‖ per
-              frame) across all episodes. Different human demonstrators often
-              execute at <span className="text-cyan-300">different speeds</span>
-              , creating artificial multimodality in the action distribution
-              that confuses the policy. A coefficient of variation (CV) above
-              0.3 strongly suggests normalizing trajectory speed before
-              training.
+              {tRich("insights.svDesc", {
+                t: <sub>t</sub>,
+                speeds: (
+                  <span className="text-cyan-300">
+                    {t("insights.svSpeeds")}
+                  </span>
+                ),
+              })}
               <br />
-              <span className="text-slate-500">
-                Based on &quot;Is Diversity All You Need&quot; (AGI-Bot, 2025)
-                which shows velocity normalization dramatically improves
-                fine-tuning success rate.
-              </span>
+              <span className="text-slate-500">{t("insights.svTheory")}</span>
             </p>
           </InfoToggle>
         </div>
@@ -1182,7 +1243,14 @@ function SpeedVarianceSection({
                   opacity={0.7}
                   rx={1}
                 >
-                  <title>{`Speed ${(lo + i * binW).toFixed(3)}–${(lo + (i + 1) * binW).toFixed(3)}: ${count} ep (${ratio.toFixed(2)}× median)`}</title>
+                  <title>
+                    {t("insights.svBarTitle", {
+                      from: (lo + i * binW).toFixed(3),
+                      to: (lo + (i + 1) * binW).toFixed(3),
+                      count,
+                      ratio: ratio.toFixed(2),
+                    })}
+                  </title>
                 </rect>
               );
             })}
@@ -1205,19 +1273,19 @@ function SpeedVarianceSection({
         </div>
         <div className="flex flex-col gap-2 text-xs shrink-0 min-w-[120px]">
           <div>
-            <span className="text-slate-500">Mean</span>{" "}
+            <span className="text-slate-500">{t("stats.mean")}</span>{" "}
             <span className="text-slate-200 tabular-nums ml-1">
               {mean.toFixed(4)}
             </span>
           </div>
           <div>
-            <span className="text-slate-500">Median</span>{" "}
+            <span className="text-slate-500">{t("stats.median")}</span>{" "}
             <span className="text-slate-200 tabular-nums ml-1">
               {median.toFixed(4)}
             </span>
           </div>
           <div>
-            <span className="text-slate-500">Std</span>{" "}
+            <span className="text-slate-500">{t("insights.std")}</span>{" "}
             <span className="text-slate-200 tabular-nums ml-1">
               {std.toFixed(4)}
             </span>
@@ -1233,7 +1301,8 @@ function SpeedVarianceSection({
 
       <div className="bg-[var(--surface-0)]/60 rounded-md px-4 py-3 border border-white/10/60 space-y-1.5">
         <p className="text-sm font-medium text-slate-200">
-          Verdict: <span className={verdict.color}>{verdict.label}</span>
+          {t("insights.verdict")}{" "}
+          <span className={verdict.color}>{verdict.label}</span>
         </p>
         <p className="text-xs text-slate-400">{verdict.tip}</p>
       </div>
@@ -1254,6 +1323,7 @@ function StateActionAlignmentSection({
   agg?: AggAlignment | null;
   numEpisodes?: number;
 }) {
+  const { t, tp, tRich } = useLocale();
   const isFs = useIsFullscreen();
   const result = useMemo(() => {
     if (agg) return { ...agg, fromAgg: true };
@@ -1395,62 +1465,73 @@ function StateActionAlignmentSection({
     fromAgg,
   } = result;
   const scopeLabel = fromAgg
-    ? `${numEpisodes} episodes sampled`
-    : "current episode";
+    ? t("insights.scopeSampled", { count: numEpisodes ?? 0 })
+    : t("insights.scopeCurrent");
 
   return (
     <div className="bg-[var(--surface-1)]/60 rounded-lg p-5 border border-white/10 space-y-4">
       <div>
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold text-slate-200">
-            State–Action Temporal Alignment
+            {t("insights.saTitle")}
             <span className="text-xs text-slate-500 ml-2 font-normal">
-              ({scopeLabel}, {numPairs} matched pair{numPairs !== 1 ? "s" : ""})
+              ({tp("insights.saScope", numPairs, { scope: scopeLabel })})
             </span>
           </h3>
           <InfoToggle>
             <p className="text-xs text-slate-400">
-              Per-dimension cross-correlation between Δaction<sub>d</sub>(t) and
-              Δstate<sub>d</sub>(t+lag), aggregated as
-              <span className="text-cyan-300"> max</span>,{" "}
-              <span className="text-slate-200">mean</span>, and
-              <span className="text-blue-400"> min</span> across all matched
-              action–state pairs. The{" "}
-              <span className="text-cyan-300">peak lag</span> reveals the
-              effective control delay — the time between when an action is
-              commanded and when the corresponding state changes.
+              {tRich("insights.saDesc", {
+                d1: <sub>d</sub>,
+                d2: <sub>d</sub>,
+                max: (
+                  <span className="text-cyan-300">{t("insights.saMax")}</span>
+                ),
+                mean: (
+                  <span className="text-slate-200">{t("insights.saMean")}</span>
+                ),
+                min: (
+                  <span className="text-blue-400">{t("insights.saMin")}</span>
+                ),
+                peak: (
+                  <span className="text-cyan-300">
+                    {t("insights.saPeakLag")}
+                  </span>
+                ),
+              })}
               <br />
               <span className="text-slate-500">
-                Central to ACT (
-                <a
-                  href="https://arxiv.org/abs/2304.13705"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:text-slate-300"
-                >
-                  Zhao et al., 2023
-                </a>{" "}
-                — action chunking compensates for delay), Real-Time Chunking
-                (RTC,{" "}
-                <a
-                  href="https://arxiv.org/abs/2506.07339"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:text-slate-300"
-                >
-                  Black et al., 2025
-                </a>
-                ), and Training-Time RTC (
-                <a
-                  href="https://arxiv.org/abs/2512.05964"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:text-slate-300"
-                >
-                  Black et al., 2025
-                </a>
-                ) — all address the timing mismatch between commanded actions
-                and observed state changes.
+                {tRich("insights.saTheory", {
+                  act: (
+                    <a
+                      href="https://arxiv.org/abs/2304.13705"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:text-slate-300"
+                    >
+                      Zhao et al., 2023
+                    </a>
+                  ),
+                  rtc: (
+                    <a
+                      href="https://arxiv.org/abs/2506.07339"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:text-slate-300"
+                    >
+                      Black et al., 2025
+                    </a>
+                  ),
+                  ttrtc: (
+                    <a
+                      href="https://arxiv.org/abs/2512.05964"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:text-slate-300"
+                    >
+                      Black et al., 2025
+                    </a>
+                  ),
+                })}
               </span>
             </p>
           </InfoToggle>
@@ -1464,16 +1545,20 @@ function StateActionAlignmentSection({
           </span>
           <div>
             <p className="text-sm text-cyan-200 font-medium">
-              Mean control delay: {meanPeakLag} step
-              {Math.abs(meanPeakLag) !== 1 ? "s" : ""} (
-              {(meanPeakLag / fps).toFixed(3)}s)
+              {tp("insights.saDelay", meanPeakLag, {
+                steps: meanPeakLag,
+                seconds: (meanPeakLag / fps).toFixed(3),
+              })}
             </p>
             <p className="text-xs text-slate-400">
               {meanPeakLag > 0
-                ? `State changes lag behind actions by ~${meanPeakLag} frames on average. Consider aligning action[t] with state[t+${meanPeakLag}].`
-                : `Actions lag behind state changes by ~${-meanPeakLag} frames on average (predictive actions).`}
+                ? t("insights.saLagPositive", { frames: meanPeakLag })
+                : t("insights.saLagNegative", { frames: -meanPeakLag })}
               {lagRangeMin !== lagRangeMax &&
-                ` Individual dimension peaks range from ${lagRangeMin} to ${lagRangeMax} steps.`}
+                ` ${t("insights.saLagRange", {
+                  min: lagRangeMin,
+                  max: lagRangeMax,
+                })}`}
             </p>
           </div>
         </div>
@@ -1490,7 +1575,7 @@ function StateActionAlignmentSection({
               dataKey="lag"
               stroke="#94a3b8"
               label={{
-                value: "Lag (steps)",
+                value: t("insights.lagAxis"),
                 position: "insideBottom",
                 offset: -8,
                 fill: "#94a3b8",
@@ -1509,7 +1594,10 @@ function StateActionAlignmentSection({
                 borderRadius: 6,
               }}
               labelFormatter={(v) =>
-                `Lag ${v} (${(Number(v) / fps).toFixed(3)}s)`
+                t("insights.lagTooltip", {
+                  lag: String(v),
+                  seconds: (Number(v) / fps).toFixed(3),
+                })
               }
               formatter={(v: number) => v.toFixed(3)}
             />
@@ -1554,27 +1642,38 @@ function StateActionAlignmentSection({
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-[3px] rounded-full shrink-0 bg-cyan-500" />
           <span className="text-xs text-slate-400">
-            max (peak: lag {maxPeakLag}, r={maxPeakCorr.toFixed(3)})
+            {t("insights.saLegend", {
+              series: t("insights.saMax"),
+              lag: maxPeakLag,
+              r: maxPeakCorr.toFixed(3),
+            })}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-[3px] rounded-full shrink-0 bg-slate-400" />
           <span className="text-xs text-slate-400">
-            mean (peak: lag {meanPeakLag}, r={meanPeakCorr.toFixed(3)})
+            {t("insights.saLegend", {
+              series: t("insights.saMean"),
+              lag: meanPeakLag,
+              r: meanPeakCorr.toFixed(3),
+            })}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-[3px] rounded-full shrink-0 bg-blue-500" />
           <span className="text-xs text-slate-400">
-            min (peak: lag {minPeakLag}, r={minPeakCorr.toFixed(3)})
+            {t("insights.saLegend", {
+              series: t("insights.saMin"),
+              lag: minPeakLag,
+              r: minPeakCorr.toFixed(3),
+            })}
           </span>
         </div>
       </div>
 
       {meanPeakLag === 0 && (
         <p className="text-xs text-green-400">
-          Mean peak correlation at lag 0 (r={meanPeakCorr.toFixed(3)}) — actions
-          and state changes are well-aligned in this episode.
+          {t("insights.saAligned", { r: meanPeakCorr.toFixed(3) })}
         </p>
       )}
     </div>
@@ -1596,6 +1695,7 @@ function ActionInsightsPanel({
   crossEpisodeData,
   crossEpisodeLoading,
 }: ActionInsightsPanelProps) {
+  const t = useT();
   const [mode, setMode] = useState<"episode" | "dataset">("dataset");
   const showAgg = mode === "dataset" && !!crossEpisodeData;
 
@@ -1603,24 +1703,23 @@ function ActionInsightsPanel({
     <div className="max-w-5xl mx-auto py-6 space-y-8">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-100">Action Insights</h2>
-          <p className="text-sm text-slate-400 mt-1">
-            Data-driven analysis to guide action chunking, data quality
-            assessment, and training configuration.
-          </p>
+          <h2 className="text-xl font-bold text-slate-100">
+            {t("insights.title")}
+          </h2>
+          <p className="text-sm text-slate-400 mt-1">{t("insights.desc")}</p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <span
             className={`text-sm ${mode === "episode" ? "text-slate-100 font-medium" : "text-slate-500"}`}
           >
-            Current Episode
+            {t("insights.scopeEpisodeToggle")}
           </span>
           <button
             onClick={() =>
               setMode((m) => (m === "episode" ? "dataset" : "episode"))
             }
             className={`relative inline-flex items-center w-9 h-5 rounded-full transition-colors shrink-0 ${mode === "dataset" ? "bg-cyan-500" : "bg-white/10"}`}
-            aria-label="Toggle episode/dataset scope"
+            aria-label={t("insights.scopeToggleAria")}
           >
             <span
               className={`inline-block w-3.5 h-3.5 bg-white rounded-full transition-transform ${mode === "dataset" ? "translate-x-[18px]" : "translate-x-[3px]"}`}
@@ -1629,7 +1728,7 @@ function ActionInsightsPanel({
           <span
             className={`text-sm ${mode === "dataset" ? "text-slate-100 font-medium" : "text-slate-500"}`}
           >
-            All Episodes
+            {t("insights.scopeAllToggle")}
             {crossEpisodeData ? ` (${crossEpisodeData.numEpisodes})` : ""}
           </span>
         </div>

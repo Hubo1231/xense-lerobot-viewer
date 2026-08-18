@@ -6,6 +6,7 @@ import type {
   EpisodeFramesData,
 } from "@/app/[org]/[dataset]/[episode]/fetch-data";
 import { useFlaggedEpisodes } from "@/context/flagged-episodes-context";
+import { useT } from "@/context/locale-context";
 
 const PAGE_SIZE = 48;
 
@@ -16,6 +17,7 @@ function FrameThumbnail({
   info: EpisodeFrameInfo;
   showLast: boolean;
 }) {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [inView, setInView] = useState(false);
@@ -81,7 +83,9 @@ function FrameThumbnail({
               ? "opacity-100 text-cyan-300"
               : "opacity-0 group-hover:opacity-100 text-slate-400 hover:text-cyan-300"
           }`}
-          title={isFlagged ? "Unflag episode" : "Flag episode"}
+          title={
+            isFlagged ? t("common.unflagEpisode") : t("common.flagEpisode")
+          }
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -102,7 +106,7 @@ function FrameThumbnail({
       <p
         className={`text-xs mt-1 tabular-nums ${isFlagged ? "text-cyan-300" : "text-slate-400"}`}
       >
-        ep {info.episodeIndex}
+        {t("common.epShort", { index: info.episodeIndex })}
         {isFlagged ? " ⚑" : ""}
       </p>
     </div>
@@ -122,6 +126,7 @@ export default function OverviewPanel({
   flaggedOnly = false,
   onFlaggedOnlyChange,
 }: OverviewPanelProps) {
+  const t = useT();
   const { flagged, count: flagCount } = useFlaggedEpisodes();
   const [selectedCamera, setSelectedCamera] = useState<string>("");
   const [showLast, setShowLast] = useState(false);
@@ -160,7 +165,7 @@ export default function OverviewPanel({
             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
           />
         </svg>
-        Loading episode frames…
+        {t("frames.loading")}
       </div>
     );
   }
@@ -174,16 +179,14 @@ export default function OverviewPanel({
     return (
       <div className="text-center py-8 space-y-2">
         <p className="text-slate-500 italic">
-          {flaggedOnly
-            ? "No flagged episodes to show."
-            : "No episode frames available."}
+          {flaggedOnly ? t("frames.noFlagged") : t("frames.noFrames")}
         </p>
         {flaggedOnly && onFlaggedOnlyChange && (
           <button
             onClick={() => onFlaggedOnlyChange(false)}
             className="text-xs text-cyan-300 hover:text-cyan-200 underline"
           >
-            Show all episodes
+            {t("frames.showAll")}
           </button>
         )}
       </div>
@@ -195,11 +198,7 @@ export default function OverviewPanel({
 
   return (
     <div className="max-w-7xl mx-auto py-6 space-y-5">
-      <p className="text-sm text-slate-500">
-        Use first/last frame views to spot episodes with bad end states or other
-        anomalies. Hover over a thumbnail and click the flag icon to mark
-        episodes with wrong outcomes for review.
-      </p>
+      <p className="text-sm text-slate-500">{t("frames.intro")}</p>
 
       {/* Controls row */}
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -246,7 +245,7 @@ export default function OverviewPanel({
                 <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
                 <line x1="4" y1="22" x2="4" y2="15" />
               </svg>
-              Flagged only ({flagCount})
+              {t("frames.flaggedOnly", { count: flagCount })}
             </button>
           )}
 
@@ -255,12 +254,12 @@ export default function OverviewPanel({
             <span
               className={`text-sm ${!showLast ? "text-slate-100 font-medium" : "text-slate-500"}`}
             >
-              First Frame
+              {t("frames.firstFrame")}
             </span>
             <button
               onClick={() => setShowLast((v) => !v)}
               className={`relative inline-flex items-center w-9 h-5 rounded-full transition-colors shrink-0 ${showLast ? "bg-cyan-500" : "bg-white/10"}`}
-              aria-label="Toggle first/last frame"
+              aria-label={t("frames.toggleAria")}
             >
               <span
                 className={`inline-block w-3.5 h-3.5 bg-white rounded-full transition-transform ${showLast ? "translate-x-[18px]" : "translate-x-[3px]"}`}
@@ -269,7 +268,7 @@ export default function OverviewPanel({
             <span
               className={`text-sm ${showLast ? "text-slate-100 font-medium" : "text-slate-500"}`}
             >
-              Last Frame
+              {t("frames.lastFrame")}
             </span>
           </div>
         </div>
@@ -282,7 +281,7 @@ export default function OverviewPanel({
               onClick={() => setPage((p) => p - 1)}
               className="px-2 py-1 rounded bg-[var(--surface-1)] hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              ← Prev
+              ← {t("common.prev")}
             </button>
             <span className="tabular-nums">
               {page + 1} / {totalPages}
@@ -292,7 +291,7 @@ export default function OverviewPanel({
               onClick={() => setPage((p) => p + 1)}
               className="px-2 py-1 rounded bg-[var(--surface-1)] hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              Next →
+              {t("common.next")} →
             </button>
           </div>
         )}

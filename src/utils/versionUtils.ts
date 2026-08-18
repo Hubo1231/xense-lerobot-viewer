@@ -7,6 +7,7 @@ import {
   isLocalRepoId,
   makeLocalRepoId,
 } from "./datasetRoute";
+import { tStandalone } from "@/i18n/standalone";
 
 /**
  * Dataset information structure from info.json
@@ -90,7 +91,9 @@ export async function getDatasetInfo(repoId: string): Promise<DatasetInfo> {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch dataset info: ${response.status}`);
+      throw new Error(
+        tStandalone("err.datasetInfoFetch", { status: response.status }),
+      );
     }
 
     const data = await response.json();
@@ -130,7 +133,7 @@ export async function getDatasetVersionAndInfo(
   const info = await getDatasetInfo(repoId);
   const version = info.codebase_version;
   if (!version) {
-    throw new Error("Dataset info.json does not contain codebase_version");
+    throw new Error(tStandalone("err.noCodebaseVersion"));
   }
   if (!SUPPORTED_VERSIONS.includes(version)) {
     throw new Error(

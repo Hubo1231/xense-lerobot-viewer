@@ -4,8 +4,10 @@ import React, { useMemo, useState } from "react";
 import type { DatasetGroup } from "@/utils/datasetGrouping";
 import HoverPlayVideo from "@/components/hover-play-video";
 import CorpusDashboard from "@/components/corpus-dashboard";
+import LanguageSwitcher from "@/components/language-switcher";
 import { formatCompact } from "@/utils/corpusStats";
 import type { DailyDelta } from "@/utils/corpusHistory";
+import { useLocale } from "@/context/locale-context";
 
 type OverallCounts = {
   ok: number;
@@ -35,6 +37,7 @@ export default function CategoryLanding({
   delta,
   onSelect,
 }: CategoryLandingProps) {
+  const { t, tp, tRich } = useLocale();
   const [query, setQuery] = useState("");
 
   const filteredGroups = useMemo(() => {
@@ -49,19 +52,24 @@ export default function CategoryLanding({
 
   return (
     <main className="px-8 py-10 max-w-7xl mx-auto">
-      <header className="mb-8">
-        <div className="text-4xl font-bold tracking-tight">
-          <span className="bg-gradient-to-r from-cyan-300 via-sky-300 to-cyan-400 bg-clip-text text-transparent">
-            Xense
-          </span>
-          <span className="text-emerald-400">Robotics</span>
+      <header className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <div className="text-4xl font-bold tracking-tight">
+            <span className="bg-gradient-to-r from-cyan-300 via-sky-300 to-cyan-400 bg-clip-text text-transparent">
+              {t("brand.part1")}
+            </span>
+            <span className="text-emerald-400">{t("brand.part2")}</span>
+          </div>
+          <h1 className="mt-3 text-xl font-medium tracking-tight text-slate-300">
+            {t("home.subtitle")}
+          </h1>
+          <p className="mt-2 text-sm text-slate-400">
+            {tRich("home.browsing", {
+              root: <span className="font-mono text-cyan-200/90">{root}</span>,
+            })}
+          </p>
         </div>
-        <h1 className="mt-3 text-xl font-medium tracking-tight text-slate-300">
-          LeRobot Local Dataset Visualizer
-        </h1>
-        <p className="mt-2 text-sm text-slate-400">
-          Browsing <span className="font-mono text-cyan-200/90">{root}</span>
-        </p>
+        <LanguageSwitcher className="mt-1.5" />
       </header>
 
       {/* Corpus dashboard. Replaces the old counts line + health pills: the same
@@ -77,8 +85,7 @@ export default function CategoryLanding({
       {errors.length > 0 && (
         <div className="mb-6 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
           <p className="font-semibold mb-1">
-            {errors.length} path{errors.length === 1 ? "" : "s"} could not be
-            scanned:
+            {tp("home.scanErrors", errors.length)}
           </p>
           <ul className="space-y-0.5 font-mono text-amber-100/80">
             {errors.slice(0, 5).map((err, i) => (
@@ -111,7 +118,7 @@ export default function CategoryLanding({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filter datasets by name"
+              placeholder={t("home.filterPlaceholder")}
               className="w-full rounded-md border border-white/10 bg-[var(--surface-1)]/60 px-10 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
             />
           </div>
@@ -122,16 +129,16 @@ export default function CategoryLanding({
         <div className="rounded-md border border-white/10 bg-[var(--surface-1)]/40 p-10 text-center text-slate-400">
           {groups.length === 0 ? (
             <>
-              No LeRobot tasks found under{" "}
-              <span className="font-mono text-slate-200">{root}</span>.
+              {tRich("home.emptyTitle", {
+                root: <span className="font-mono text-slate-200">{root}</span>,
+              })}
               <br />
               <span className="text-xs text-slate-500">
-                Make sure each task directory contains{" "}
-                <code>meta/info.json</code>.
+                {tRich("home.emptyHint", { file: <code>meta/info.json</code> })}
               </span>
             </>
           ) : (
-            <>No datasets match the current filter.</>
+            <>{t("home.noMatch")}</>
           )}
         </div>
       ) : (
@@ -144,9 +151,10 @@ export default function CategoryLanding({
                 key={group.prefix}
                 type="button"
                 onClick={() => onSelect(group.prefix)}
-                title={`${group.prefix} — ${taskCount} task${
-                  taskCount === 1 ? "" : "s"
-                }`}
+                title={t("home.groupTitle", {
+                  prefix: group.prefix,
+                  tasks: tp("home.taskCount", taskCount),
+                })}
                 data-hover-card
                 className="group panel relative flex h-48 items-end overflow-hidden rounded-md border-2 border-white/10 text-left transition-colors hover:border-cyan-400/40"
               >
@@ -162,7 +170,7 @@ export default function CategoryLanding({
 
                 {/* Task-count corner badge — top-right */}
                 <div className="absolute right-2 top-2 z-20 inline-flex items-center gap-1 rounded-full bg-cyan-500/85 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-900 shadow">
-                  {taskCount} task{taskCount === 1 ? "" : "s"}
+                  {tp("home.taskCount", taskCount)}
                 </div>
 
                 <div className="relative z-20 w-full px-3 py-3 text-slate-100">
@@ -184,24 +192,28 @@ export default function CategoryLanding({
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-300">
                     <span className="tabular">
-                      {formatTotalEpisodes(group.totalEpisodes)} episodes
+                      {t("home.groupEpisodes", {
+                        value: formatTotalEpisodes(group.totalEpisodes),
+                      })}
                     </span>
                     {group.totalFrames > 0 && (
                       <span className="tabular text-slate-400">
-                        {formatCompact(group.totalFrames)} frames
+                        {t("home.groupFrames", {
+                          value: formatCompact(group.totalFrames),
+                        })}
                       </span>
                     )}
                     <span className="inline-flex items-center gap-1 text-emerald-300">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                      {group.counts.ok} healthy
+                      {t("home.groupHealthy", { count: group.counts.ok })}
                     </span>
                     {hasIssues && (
                       <span className="inline-flex items-center gap-1 text-amber-300">
                         <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                        {group.counts.incomplete + group.counts.empty} issue
-                        {group.counts.incomplete + group.counts.empty === 1
-                          ? ""
-                          : "s"}
+                        {tp(
+                          "home.groupIssues",
+                          group.counts.incomplete + group.counts.empty,
+                        )}
                       </span>
                     )}
                   </div>

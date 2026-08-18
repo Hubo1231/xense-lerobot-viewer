@@ -7,6 +7,8 @@
  * hundred-gigabyte download from a single click.
  */
 
+import { tStandalone } from "@/i18n/standalone";
+
 const SYNC_URL = "/api/local-datasets/sync";
 
 export type SyncListing = {
@@ -96,7 +98,7 @@ export async function runSync(
     const payload = await response.json().catch(() => null);
     throw new Error(payload?.error || `Sync failed (${response.status})`);
   }
-  if (!response.body) throw new Error("Sync returned no stream.");
+  if (!response.body) throw new Error(tStandalone("err.syncNoStream"));
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -137,6 +139,6 @@ export async function runSync(
   handle(buffer);
 
   if (streamError) throw new Error(streamError);
-  if (!result) throw new Error("Sync ended without a result.");
+  if (!result) throw new Error(tStandalone("err.syncNoResult"));
   return result;
 }

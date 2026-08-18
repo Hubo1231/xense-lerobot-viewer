@@ -7,6 +7,12 @@ import {
   decodeLocalDatasetPath,
   resolveServerLocalDatasetPath,
 } from "@/utils/datasetRoute";
+import { richInterpolate } from "@/i18n/rich";
+import { getServerLocale } from "@/i18n/locale-server";
+import { MESSAGES, type MessageKey } from "@/i18n/messages";
+import { interpolate, type InterpolationVars } from "@/i18n/format";
+
+type Translate = (key: MessageKey, vars?: InterpolationVars) => string;
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +39,7 @@ type IntegrityIssue = {
 
 async function probeDatasetHealth(
   datasetDir: string,
+  t: Translate,
 ): Promise<IntegrityIssue | null> {
   let info: { total_episodes?: number } = {};
   try {
@@ -44,8 +51,10 @@ async function probeDatasetHealth(
   } catch {
     return {
       status: "incomplete",
-      reason: "meta/info.json is missing or unreadable",
-      details: [`Expected: ${path.join(datasetDir, "meta", "info.json")}`],
+      reason: t("err.infoMissing"),
+      details: [
+        t("err.expected", { path: path.join(datasetDir, "meta", "info.json") }),
+      ],
       totalEpisodes: 0,
     };
   }
@@ -68,8 +77,8 @@ async function probeDatasetHealth(
   if (totalEpisodes <= 0) {
     return {
       status: "empty",
-      reason: "This dataset has no episodes",
-      details: ["info.json reports total_episodes = 0"],
+      reason: t("err.noEpisodes"),
+      details: [t("err.zeroEpisodes")],
       totalEpisodes,
     };
   }
@@ -80,9 +89,9 @@ async function probeDatasetHealth(
     if (!hasVideos) missing.push("videos/");
     return {
       status: "incomplete",
-      reason: "Dataset payload is missing from disk",
+      reason: t("err.payloadMissing"),
       details: [
-        `info.json claims ${totalEpisodes} episodes, but the following directories are empty or missing:`,
+        t("err.payloadDetail", { count: totalEpisodes }),
         ...missing.map((m) => `  • ${path.join(datasetDir, m)}`),
       ],
       totalEpisodes,
@@ -95,9 +104,11 @@ async function probeDatasetHealth(
 function IntegrityErrorPage({
   datasetPath,
   issue,
+  t,
 }: {
   datasetPath: string;
   issue: IntegrityIssue;
+  t: Translate;
 }) {
   const isError = issue.status === "incomplete";
   return (
@@ -114,10 +125,10 @@ function IntegrityErrorPage({
               : "bg-amber-500/20 text-amber-200"
           }`}
         >
-          {isError ? "⚠ Incomplete dataset" : "⚠ Empty dataset"}
+          {isError ? t("err.incompleteBadge") : t("err.emptyBadge")}
         </div>
         <h1 className="mb-2 text-xl font-semibold text-slate-100">
-          Cannot open this dataset
+          {t("err.cannotOpen")}
         </h1>
         <p
           className="mb-4 font-mono text-sm text-slate-400"
@@ -143,28 +154,32 @@ function IntegrityErrorPage({
           ))}
         </ul>
         <div className="rounded-md border border-white/10 bg-[var(--surface-1)]/50 p-4 text-sm text-slate-300">
-          <p className="mb-2 font-medium text-slate-200">How to fix</p>
+          <p className="mb-2 font-medium text-slate-200">{t("err.howToFix")}</p>
           <p className="text-xs text-slate-400">
-            Re-download the dataset payload with{" "}
-            <code className="rounded bg-black/40 px-1 py-0.5 text-cyan-200">
-              huggingface-cli download
-            </code>{" "}
-            so that{" "}
-            <code className="rounded bg-black/40 px-1 py-0.5 text-cyan-200">
-              data/
-            </code>{" "}
-            and{" "}
-            <code className="rounded bg-black/40 px-1 py-0.5 text-cyan-200">
-              videos/
-            </code>{" "}
-            are populated, or remove the empty entry from your local cache.
+            {richInterpolate(t("err.fixHint"), {
+              cmd: (
+                <code className="rounded bg-black/40 px-1 py-0.5 text-cyan-200">
+                  huggingface-cli download
+                </code>
+              ),
+              data: (
+                <code className="rounded bg-black/40 px-1 py-0.5 text-cyan-200">
+                  data/
+                </code>
+              ),
+              videos: (
+                <code className="rounded bg-black/40 px-1 py-0.5 text-cyan-200">
+                  videos/
+                </code>
+              ),
+            })}
           </p>
         </div>
         <Link
           href="/"
           className="mt-6 inline-flex items-center gap-2 rounded-md bg-cyan-500/90 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-400"
         >
-          ← Back to dataset browser
+          {t("err.back")}
         </Link>
       </div>
     </div>
@@ -179,12 +194,17 @@ export default async function LocalEpisodePage({
   const { encodedPath, episode } = await params;
   const episodeNumber = Number(episode.replace(/^episode_/, ""));
 
+  // Server component — no React context here, so the dictionary is looked up
+  // directly from the request's locale cookie.
+  const messages = MESSAGES[await getServerLocale()];
+  const t: Translate = (key, vars) => interpolate(messages[key], vars);
+
   const datasetPath = resolveServerLocalDatasetPath(
     decodeLocalDatasetPath(encodedPath),
   );
-  const issue = await probeDatasetHealth(datasetPath);
+  const issue = await probeDatasetHealth(datasetPath, t);
   if (issue) {
-    return <IntegrityErrorPage datasetPath={datasetPath} issue={issue} />;
+    return <IntegrityErrorPage datasetPath={datasetPath} issue={issue} t={t} />;
   }
 
   return (

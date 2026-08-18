@@ -12,16 +12,18 @@ import {
   ActionVelocitySection,
   FullscreenWrapper,
 } from "@/components/action-insights-panel";
+import { useLocale, useT } from "@/context/locale-context";
 
 // ─── Shared small components ─────────────────────────────────────
 
 function FlagBtn({ id }: { id: number }) {
+  const t = useT();
   const { has, toggle } = useFlaggedEpisodes();
   const flagged = has(id);
   return (
     <button
       onClick={() => toggle(id)}
-      title={flagged ? "Unflag episode" : "Flag for review"}
+      title={flagged ? t("common.unflagEpisode") : t("common.flagForReview")}
       className={`p-0.5 rounded transition-colors ${flagged ? "text-cyan-300" : "text-slate-600 hover:text-slate-400"}`}
     >
       <svg
@@ -43,6 +45,7 @@ function FlagBtn({ id }: { id: number }) {
 }
 
 function FlagAllBtn({ ids, label }: { ids: number[]; label?: string }) {
+  const t = useT();
   const { addMany } = useFlaggedEpisodes();
   return (
     <button
@@ -63,7 +66,7 @@ function FlagAllBtn({ ids, label }: { ids: number[]; label?: string }) {
         <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
         <line x1="4" y1="22" x2="4" y2="15" />
       </svg>
-      {label ?? "Flag all"}
+      {label ?? t("filter.flagAll")}
     </button>
   );
 }
@@ -71,6 +74,7 @@ function FlagAllBtn({ ids, label }: { ids: number[]; label?: string }) {
 // ─── Lowest-Movement Episodes ────────────────────────────────────
 
 function LowMovementSection({ episodes }: { episodes: LowMovementEpisode[] }) {
+  const t = useT();
   if (episodes.length === 0) return null;
   const maxMovement = Math.max(...episodes.map((e) => e.totalMovement), 1e-10);
 
@@ -78,15 +82,11 @@ function LowMovementSection({ episodes }: { episodes: LowMovementEpisode[] }) {
     <div className="bg-[var(--surface-1)]/60 rounded-lg p-5 border border-white/10 space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-200">
-          Lowest-Movement Episodes
+          {t("filter.lowMovementTitle")}
         </h3>
         <FlagAllBtn ids={episodes.map((e) => e.episodeIndex)} />
       </div>
-      <p className="text-xs text-slate-400">
-        Episodes with the lowest average action change per frame. Very low
-        values may indicate the robot was standing still or the episode was
-        recorded incorrectly.
-      </p>
+      <p className="text-xs text-slate-400">{t("filter.lowMovementDesc")}</p>
       <div
         className="grid gap-2"
         style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
@@ -98,7 +98,7 @@ function LowMovementSection({ episodes }: { episodes: LowMovementEpisode[] }) {
           >
             <FlagBtn id={ep.episodeIndex} />
             <span className="text-xs text-slate-300 font-medium shrink-0">
-              ep {ep.episodeIndex}
+              {t("common.epShort", { index: ep.episodeIndex })}
             </span>
             <div className="flex-1 min-w-0">
               <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
@@ -129,6 +129,7 @@ function LowMovementSection({ episodes }: { episodes: LowMovementEpisode[] }) {
 // ─── Episode Length Filter ────────────────────────────────────────
 
 function EpisodeLengthFilter({ episodes }: { episodes: EpisodeLengthInfo[] }) {
+  const { t, tp } = useLocale();
   const { addMany } = useFlaggedEpisodes();
   const globalMin = useMemo(
     () => Math.min(...episodes.map((e) => e.lengthSeconds)),
@@ -159,7 +160,7 @@ function EpisodeLengthFilter({ episodes }: { episodes: EpisodeLengthInfo[] }) {
   return (
     <div className="bg-[var(--surface-1)]/60 rounded-lg p-5 border border-white/10 space-y-4">
       <h3 className="text-sm font-semibold text-slate-200">
-        Episode Length Filter
+        {t("filter.lengthTitle")}
       </h3>
 
       <div className="space-y-2">
@@ -204,15 +205,14 @@ function EpisodeLengthFilter({ episodes }: { episodes: EpisodeLengthInfo[] }) {
       {rangeChanged && (
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-400">
-            {outsideIds.length} episode{outsideIds.length !== 1 ? "s" : ""}{" "}
-            outside range
+            {tp("filter.outsideRange", outsideIds.length)}
           </span>
           {outsideIds.length > 0 && (
             <button
               onClick={() => addMany(outsideIds)}
               className="text-xs bg-cyan-400/15 text-cyan-300 border border-cyan-400/40 rounded px-2 py-1 hover:bg-cyan-400/20 transition-colors"
             >
-              Flag {outsideIds.length} outside range
+              {t("filter.flagOutside", { count: outsideIds.length })}
             </button>
           )}
         </div>
@@ -239,6 +239,7 @@ function FlaggedIdsCopyBar({
   repoId: string;
   onViewEpisodes?: () => void;
 }) {
+  const { t, tRich } = useLocale();
   const { flagged, count, clear } = useFlaggedEpisodes();
   const [copied, setCopied] = useState(false);
 
@@ -257,7 +258,7 @@ function FlaggedIdsCopyBar({
     <div className="bg-[var(--surface-1)]/60 rounded-lg p-4 border border-cyan-400/30 space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-cyan-300">
-          Flagged Episodes
+          {t("filter.flaggedTitle")}
           <span className="text-xs text-slate-500 ml-2 font-normal">
             ({count})
           </span>
@@ -266,7 +267,7 @@ function FlaggedIdsCopyBar({
           <button
             onClick={handleCopy}
             className="text-xs text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1"
-            title="Copy IDs"
+            title={t("filter.copyIdsTitle")}
           >
             {copied ? (
               <svg
@@ -295,13 +296,13 @@ function FlaggedIdsCopyBar({
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
               </svg>
             )}
-            Copy
+            {t("common.copy")}
           </button>
           <button
             onClick={clear}
             className="text-xs text-slate-500 hover:text-red-400 transition-colors"
           >
-            Clear
+            {t("common.clear")}
           </button>
         </div>
       </div>
@@ -327,23 +328,26 @@ function FlaggedIdsCopyBar({
             <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
             <line x1="4" y1="22" x2="4" y2="15" />
           </svg>
-          View flagged episodes
+          {t("filter.viewFlagged")}
         </button>
       )}
       <div className="bg-[var(--surface-0)]/60 rounded-md px-3 py-2 border border-white/10/60 space-y-2.5">
         <p className="text-xs text-slate-400">
-          <a
-            href="https://github.com/huggingface/lerobot"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-cyan-300 underline"
-          >
-            LeRobot CLI
-          </a>{" "}
-          — delete flagged episodes:
+          {tRich("filter.cliIntro", {
+            link: (
+              <a
+                href="https://github.com/huggingface/lerobot"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-cyan-300 underline"
+              >
+                LeRobot CLI
+              </a>
+            ),
+          })}
         </p>
-        <pre className="text-xs text-slate-300 bg-[var(--bg)]/50 rounded px-2 py-1.5 overflow-x-auto select-all">{`# Delete episodes (modifies original dataset)\nlerobot-edit-dataset \\\n    --repo_id ${repoId} \\\n    --operation.type delete_episodes \\\n    --operation.episode_indices "[${ids.join(", ")}]"`}</pre>
-        <pre className="text-xs text-slate-300 bg-[var(--bg)]/50 rounded px-2 py-1.5 overflow-x-auto select-all">{`# Delete episodes and save to a new dataset (preserves original)\nlerobot-edit-dataset \\\n    --repo_id ${repoId} \\\n    --new_repo_id ${repoId}_filtered \\\n    --operation.type delete_episodes \\\n    --operation.episode_indices "[${ids.join(", ")}]"`}</pre>
+        <pre className="text-xs text-slate-300 bg-[var(--bg)]/50 rounded px-2 py-1.5 overflow-x-auto select-all">{`# ${t("filter.cliComment1")}\nlerobot-edit-dataset \\\n    --repo_id ${repoId} \\\n    --operation.type delete_episodes \\\n    --operation.episode_indices "[${ids.join(", ")}]"`}</pre>
+        <pre className="text-xs text-slate-300 bg-[var(--bg)]/50 rounded px-2 py-1.5 overflow-x-auto select-all">{`# ${t("filter.cliComment2")}\nlerobot-edit-dataset \\\n    --repo_id ${repoId} \\\n    --new_repo_id ${repoId}_filtered \\\n    --operation.type delete_episodes \\\n    --operation.episode_indices "[${ids.join(", ")}]"`}</pre>
       </div>
     </div>
   );
@@ -357,14 +361,14 @@ function FilteringPanel({
   flatChartData,
   onViewFlaggedEpisodes,
 }: FilteringPanelProps) {
+  const t = useT();
   return (
     <div className="max-w-5xl mx-auto py-6 space-y-8">
       <div>
-        <h2 className="text-xl font-bold text-slate-100">Filtering</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          Identify and flag problematic episodes for removal. Flagged episodes
-          appear in the sidebar and can be exported as a CLI command.
-        </p>
+        <h2 className="text-xl font-bold text-slate-100">
+          {t("filter.title")}
+        </h2>
+        <p className="text-sm text-slate-400 mt-1">{t("filter.desc")}</p>
       </div>
 
       <FlaggedIdsCopyBar
@@ -398,7 +402,7 @@ function FilteringPanel({
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
               />
             </svg>
-            Loading cross-episode data…
+            {t("filter.loadingCross")}
           </div>
         </div>
       )}

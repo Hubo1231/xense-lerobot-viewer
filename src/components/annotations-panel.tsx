@@ -20,6 +20,8 @@ import "./annotations-skin.css";
 import React, { useMemo, useState } from "react";
 import { useTime } from "../context/time-context";
 import { useAnnotations } from "../context/annotations-context";
+import { useT } from "../context/locale-context";
+import type { MessageKey } from "@/i18n/messages";
 import {
   buildSpeechAtom,
   classifyVqa,
@@ -62,7 +64,7 @@ type QuickAddKind =
 
 interface QuickAddField {
   name: string;
-  placeholder: string;
+  placeholderKey: MessageKey;
   type?: "text" | "number";
   width?: string;
   grow?: boolean;
@@ -75,7 +77,7 @@ interface QuickAddBuildCtx {
 
 interface QuickAddDef {
   kind: QuickAddKind;
-  label: string;
+  labelKey: MessageKey;
   /** When true, the displayed timestamp is 0 (atom is pinned to episode start). */
   atEpisodeStart?: boolean;
   fields: QuickAddField[];
@@ -91,12 +93,12 @@ interface QuickAddDef {
 const QUICK_ADD_DEFS: QuickAddDef[] = [
   {
     kind: "task_aug",
-    label: "task augmentation",
+    labelKey: "ann.qa.task_aug",
     atEpisodeStart: true,
     fields: [
       {
         name: "label",
-        placeholder: "pick up the blue cube and place it in the green box",
+        placeholderKey: "ann.ph.taskAug",
         grow: true,
       },
     ],
@@ -117,11 +119,11 @@ const QUICK_ADD_DEFS: QuickAddDef[] = [
   },
   {
     kind: "subtask",
-    label: "subtask",
+    labelKey: "ann.qa.subtask",
     fields: [
       {
         name: "label",
-        placeholder: "grasp the handle of the sponge",
+        placeholderKey: "ann.ph.subtask",
         grow: true,
       },
     ],
@@ -142,11 +144,11 @@ const QUICK_ADD_DEFS: QuickAddDef[] = [
   },
   {
     kind: "plan",
-    label: "plan",
+    labelKey: "ann.qa.plan",
     fields: [
       {
         name: "label",
-        placeholder: "1. grab sponge / 2. wipe / 3. tidy",
+        placeholderKey: "ann.ph.plan",
         grow: true,
       },
     ],
@@ -167,11 +169,11 @@ const QUICK_ADD_DEFS: QuickAddDef[] = [
   },
   {
     kind: "memory",
-    label: "memory",
+    labelKey: "ann.qa.memory",
     fields: [
       {
         name: "label",
-        placeholder: "sponge picked up; counter still dirty",
+        placeholderKey: "ann.ph.memory",
         grow: true,
       },
     ],
@@ -192,11 +194,11 @@ const QUICK_ADD_DEFS: QuickAddDef[] = [
   },
   {
     kind: "interjection",
-    label: "interjection (user)",
+    labelKey: "ann.qa.interjection",
     fields: [
       {
         name: "label",
-        placeholder: "user: actually skip the wipe…",
+        placeholderKey: "ann.ph.interjection",
         grow: true,
       },
     ],
@@ -217,11 +219,11 @@ const QUICK_ADD_DEFS: QuickAddDef[] = [
   },
   {
     kind: "speech",
-    label: "speech (robot say)",
+    labelKey: "ann.qa.speech",
     fields: [
       {
         name: "label",
-        placeholder: "robot say: Got it, skipping the wipe.",
+        placeholderKey: "ann.ph.speech",
         grow: true,
       },
     ],
@@ -233,10 +235,15 @@ const QUICK_ADD_DEFS: QuickAddDef[] = [
   },
   {
     kind: "count",
-    label: "vqa: count",
+    labelKey: "ann.qa.count",
     fields: [
-      { name: "label", placeholder: "object label (e.g. cup)", grow: true },
-      { name: "count", placeholder: "count", type: "number", width: "80px" },
+      { name: "label", placeholderKey: "ann.ph.countLabel", grow: true },
+      {
+        name: "count",
+        placeholderKey: "ann.ph.count",
+        type: "number",
+        width: "80px",
+      },
     ],
     build: ({ label, count }, { ts, vqaCamera }) => {
       const text = label.trim();
@@ -263,11 +270,15 @@ const QUICK_ADD_DEFS: QuickAddDef[] = [
   },
   {
     kind: "attribute",
-    label: "vqa: attribute",
+    labelKey: "ann.qa.attribute",
     fields: [
-      { name: "label", placeholder: "label", width: "120px" },
-      { name: "attribute", placeholder: "attribute (color)", width: "120px" },
-      { name: "value", placeholder: "value (red)", grow: true },
+      { name: "label", placeholderKey: "ann.ph.label", width: "120px" },
+      {
+        name: "attribute",
+        placeholderKey: "ann.ph.attribute",
+        width: "120px",
+      },
+      { name: "value", placeholderKey: "ann.ph.value", grow: true },
     ],
     build: ({ label, attribute, value }, { ts, vqaCamera }) => {
       const text = label.trim();
@@ -294,11 +305,15 @@ const QUICK_ADD_DEFS: QuickAddDef[] = [
   },
   {
     kind: "spatial",
-    label: "vqa: spatial relation",
+    labelKey: "ann.qa.spatial",
     fields: [
-      { name: "subject", placeholder: "subject", width: "100px" },
-      { name: "relation", placeholder: "relation (right_of)", width: "130px" },
-      { name: "object", placeholder: "object", grow: true },
+      { name: "subject", placeholderKey: "ann.ph.subject", width: "100px" },
+      {
+        name: "relation",
+        placeholderKey: "ann.ph.relation",
+        width: "130px",
+      },
+      { name: "object", placeholderKey: "ann.ph.object", grow: true },
     ],
     build: ({ subject, relation, object }, { ts, vqaCamera }) => {
       if (!subject || !relation || !object) return null;
@@ -352,6 +367,7 @@ interface RailGroupDef {
     helpers: {
       activeCamera: string | null;
       firstLine: (s: string | null) => string;
+      empty: string;
     },
   ) => string;
 }
@@ -363,7 +379,7 @@ const RAIL_GROUPS: RailGroupDef[] = [
     dotClass: "dot-task-aug",
     column: "persistent",
     match: (a) => a.style === "task_aug",
-    label: (a) => a.content || "(empty)",
+    label: (a, { empty }) => a.content || empty,
   },
   {
     key: "subtask",
@@ -371,7 +387,7 @@ const RAIL_GROUPS: RailGroupDef[] = [
     dotClass: "dot-subtask",
     column: "persistent",
     match: (a) => a.style === "subtask",
-    label: (a) => a.content || "(empty)",
+    label: (a, { empty }) => a.content || empty,
   },
   {
     key: "plan",
@@ -395,7 +411,7 @@ const RAIL_GROUPS: RailGroupDef[] = [
     dotClass: "dot-interjection",
     column: "events",
     match: (a) => a.style === "interjection",
-    label: (a) => a.content || "(empty)",
+    label: (a, { empty }) => a.content || empty,
   },
   {
     key: "speech",
@@ -403,7 +419,7 @@ const RAIL_GROUPS: RailGroupDef[] = [
     dotClass: "dot-speech",
     column: "events",
     match: (a) => isSpeechAtom(a),
-    label: (a) => speechText(a) || "(empty)",
+    label: (a, { empty }) => speechText(a) || empty,
   },
   {
     key: "vqa",
@@ -433,6 +449,7 @@ function useJump(): (ts: number) => void {
 }
 
 export const AnnotationsPanel: React.FC<Props> = ({ cameraKeys }) => {
+  const t = useT();
   const {
     atoms,
     addAtoms,
@@ -474,8 +491,8 @@ export const AnnotationsPanel: React.FC<Props> = ({ cameraKeys }) => {
   // VQA filters out other-camera answers when the dataset has multiple
   // cameras so the rail mirrors the active video.
   const groups = useMemo(() => {
-    const firstLine = (s: string | null) =>
-      (s || "").split("\n")[0] || "(empty)";
+    const empty = t("ann.emptyContent");
+    const firstLine = (s: string | null) => (s || "").split("\n")[0] || empty;
     const otherCamera = (a: LanguageAtom): boolean =>
       !!activeCamera &&
       cameraKeys.length > 1 &&
@@ -488,12 +505,12 @@ export const AnnotationsPanel: React.FC<Props> = ({ cameraKeys }) => {
         .map(({ atom, idx }) => ({
           atom,
           idx,
-          label: def.label(atom, { activeCamera, firstLine }),
+          label: def.label(atom, { activeCamera, firstLine, empty }),
         }))
         .sort((a, b) => a.atom.timestamp - b.atom.timestamp);
       return { def, entries };
     });
-  }, [atoms, activeCamera, cameraKeys.length]);
+  }, [atoms, activeCamera, cameraKeys.length, t]);
 
   // ============ Quick-add handler ============
   // VQA quick-adds inherit the active camera so per-camera filtering shows
@@ -517,10 +534,12 @@ export const AnnotationsPanel: React.FC<Props> = ({ cameraKeys }) => {
   const handleSave = async () => {
     const r = await save();
     if (!r.ok) {
-      setExportStatus(`Save failed: ${r.error || "unknown"}`);
+      setExportStatus(
+        t("ann.saveFailed", { error: r.error || t("ann.saveUnknown") }),
+      );
     } else {
       setExportStatus(
-        r.path ? `Saved episode to ${r.path}` : "Saved episode annotations.",
+        r.path ? t("ann.savedTo", { path: r.path }) : t("ann.saved"),
       );
     }
   };
@@ -536,13 +555,10 @@ export const AnnotationsPanel: React.FC<Props> = ({ cameraKeys }) => {
       <div className="annotation-actionbar">
         <div>
           <h3>
-            Language annotations
-            {dirty && <span className="dirty-pill">unsaved</span>}
+            {t("ann.title")}
+            {dirty && <span className="dirty-pill">{t("ann.unsaved")}</span>}
           </h3>
-          <p>
-            Select an atom from the timeline or list, then edit it in the
-            inspector.
-          </p>
+          <p>{t("ann.subtitle")}</p>
         </div>
         <div className="actionbar-actions">
           <button
@@ -550,7 +566,7 @@ export const AnnotationsPanel: React.FC<Props> = ({ cameraKeys }) => {
             onClick={handleSave}
             className="text-xs h-7 px-3 rounded border border-cyan-500/40 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-40"
           >
-            {saving ? "Saving…" : "Save episode"}
+            {saving ? t("ann.saving") : t("ann.save")}
           </button>
         </div>
       </div>
@@ -559,11 +575,8 @@ export const AnnotationsPanel: React.FC<Props> = ({ cameraKeys }) => {
 
       <section className="annotation-composer">
         <div className="composer-copy">
-          <span className="section-kicker">Add text annotation</span>
-          <p>
-            Adds task phrasing, subtask, plan, memory, speech, or non-spatial
-            VQA atoms. Task phrasings are saved at episode start.
-          </p>
+          <span className="section-kicker">{t("ann.composerKicker")}</span>
+          <p>{t("ann.composerDesc")}</p>
         </div>
         <div className="quick-add">
           <span className="ts-pill">
@@ -578,7 +591,7 @@ export const AnnotationsPanel: React.FC<Props> = ({ cameraKeys }) => {
           >
             {QUICK_ADD_DEFS.map((d) => (
               <option key={d.kind} value={d.kind}>
-                {d.label}
+                {t(d.labelKey)}
               </option>
             ))}
           </select>
@@ -586,7 +599,7 @@ export const AnnotationsPanel: React.FC<Props> = ({ cameraKeys }) => {
             <input
               key={f.name}
               type={f.type === "number" ? "number" : "text"}
-              placeholder={f.placeholder}
+              placeholder={t(f.placeholderKey)}
               className={f.grow ? "grow" : undefined}
               style={f.width ? { width: f.width } : undefined}
               value={qaValues[f.name] ?? ""}
@@ -601,7 +614,7 @@ export const AnnotationsPanel: React.FC<Props> = ({ cameraKeys }) => {
             />
           ))}
           <button className="add-btn" onClick={handleQuickAdd}>
-            + Add at frame
+            {t("ann.addAtFrame")}
           </button>
         </div>
       </section>
@@ -610,16 +623,16 @@ export const AnnotationsPanel: React.FC<Props> = ({ cameraKeys }) => {
         <div className="rail annotation-list">
           <div className="list-head">
             <div>
-              <span className="section-kicker">Annotations</span>
-              <p>{atoms.length} atoms in this episode</p>
+              <span className="section-kicker">{t("ann.listKicker")}</span>
+              <p>{t("ann.atomCount", { count: atoms.length })}</p>
             </div>
             <span className="ts-pill">{fmtTime(currentTime)}</span>
           </div>
           {atoms.length === 0 && (
             <div className="rail-empty">
-              No annotations yet.
+              {t("ann.empty1")}
               <br />
-              Add text above or draw on the active video.
+              {t("ann.empty2")}
             </div>
           )}
           {(["persistent", "events"] as const).map((column) => {
@@ -633,12 +646,14 @@ export const AnnotationsPanel: React.FC<Props> = ({ cameraKeys }) => {
               <div className="rail-column" key={column}>
                 <div className={`rail-column-head ${column}`}>
                   <span className="rail-column-title">
-                    {column === "persistent" ? "Persistent" : "Events"}
+                    {column === "persistent"
+                      ? t("ann.colPersistent")
+                      : t("ann.colEvents")}
                   </span>
                   <span className="rail-column-sub">
                     {column === "persistent"
-                      ? "language_persistent · broadcast across every frame"
-                      : "language_events · fire on a single frame"}
+                      ? t("ann.colPersistentSub")
+                      : t("ann.colEventsSub")}
                   </span>
                 </div>
                 {colGroups.map(({ def, entries }) => (
@@ -658,11 +673,8 @@ export const AnnotationsPanel: React.FC<Props> = ({ cameraKeys }) => {
         <div className="editor inspector">
           {selectedAtom == null ? (
             <div className="editor-empty">
-              <span className="section-kicker">Inspector</span>
-              <p>
-                Select an annotation from the list or timeline, or draw a new
-                bbox/keypoint on the video.
-              </p>
+              <span className="section-kicker">{t("ann.inspectorKicker")}</span>
+              <p>{t("ann.inspectorEmpty")}</p>
             </div>
           ) : (
             <AtomEditor
@@ -731,10 +743,11 @@ const AtomEditor: React.FC<{
   onChange: (updates: Partial<LanguageAtom>) => void;
   onDelete: () => void;
 }> = ({ atom, cameraKeys, onChange, onDelete }) => {
+  const t = useT();
   const jump = useJump();
   const { snap } = useAnnotations();
   const isSpeech = isSpeechAtom(atom);
-  const cameraLabel = atom.camera ?? "all cameras";
+  const cameraLabel = atom.camera ?? t("ann.allCameras");
   const roleLabel = isSpeech ? "speech" : atom.role;
   const [timestampDraft, setTimestampDraft] = useState(() =>
     String(atom.timestamp),
@@ -779,14 +792,14 @@ const AtomEditor: React.FC<{
         <div className="right">
           <button
             className="icon-btn"
-            title="Jump to this atom's frame"
+            title={t("ann.jumpToFrame")}
             onClick={() => jump(atom.timestamp)}
           >
             ▶
           </button>
           <button
             className="icon-btn danger"
-            title="Delete this atom"
+            title={t("ann.deleteAtom")}
             onClick={onDelete}
           >
             ×
@@ -795,7 +808,7 @@ const AtomEditor: React.FC<{
       </div>
 
       <div className="field">
-        <label className="field-label">Timestamp (s)</label>
+        <label className="field-label">{t("ann.timestamp")}</label>
         <div className="ts-row">
           <input
             type="text"
@@ -822,7 +835,7 @@ const AtomEditor: React.FC<{
               }
             }}
           >
-            snap to frame
+            {t("ann.snapToFrame")}
           </button>
         </div>
       </div>
@@ -836,14 +849,14 @@ const AtomEditor: React.FC<{
         <div className="field">
           <label className="field-label">
             {atom.style === "subtask"
-              ? "Subtask"
+              ? t("ann.fieldSubtask")
               : atom.style === "task_aug"
-                ? "Task augmentation"
+                ? t("ann.fieldTaskAug")
                 : atom.style === "plan"
-                  ? "Plan"
+                  ? t("ann.fieldPlan")
                   : atom.style === "memory"
-                    ? "Memory"
-                    : "Interjection"}
+                    ? t("ann.fieldMemory")
+                    : t("ann.fieldInterjection")}
           </label>
           {atom.style === "task_aug" ||
           atom.style === "subtask" ||
@@ -865,7 +878,7 @@ const AtomEditor: React.FC<{
 
       {isSpeech && atom.tool_calls && (
         <div className="field">
-          <label className="field-label">Robot speech (say tool call)</label>
+          <label className="field-label">{t("ann.fieldSpeech")}</label>
           <input
             type="text"
             value={speechText(atom) || ""}
@@ -912,19 +925,20 @@ const CameraField: React.FC<{
   cameraKeys: string[];
   onChange: (updates: Partial<LanguageAtom>) => void;
 }> = ({ atom, cameraKeys, onChange }) => {
+  const t = useT();
   if (atom.style !== "vqa") return null;
   if (cameraKeys.length === 0) return null;
   const value = atom.camera ?? "";
   return (
     <div className="field">
-      <label className="field-label">Camera</label>
+      <label className="field-label">{t("ann.fieldCamera")}</label>
       <select
         value={value}
         onChange={(e) =>
           onChange({ camera: e.target.value === "" ? null : e.target.value })
         }
       >
-        <option value="">(any — renders on every camera)</option>
+        <option value="">{t("ann.cameraAny")}</option>
         {cameraKeys.map((k) => (
           <option key={k} value={k}>
             {k}
@@ -939,13 +953,14 @@ const VqaEditorFields: React.FC<{
   atom: LanguageAtom;
   onChange: (updates: Partial<LanguageAtom>) => void;
 }> = ({ atom, onChange }) => {
+  const t = useT();
   const parsed = parseVqaAnswer(atom.content);
   const kind = parsed ? classifyVqa(parsed) : null;
 
   if (atom.role === "user") {
     return (
       <div className="field">
-        <label className="field-label">Question</label>
+        <label className="field-label">{t("ann.fieldQuestion")}</label>
         <input
           type="text"
           value={atom.content || ""}
@@ -958,7 +973,9 @@ const VqaEditorFields: React.FC<{
   // Assistant atom — answer JSON (raw + structured viewer)
   return (
     <div className="field">
-      <label className="field-label">Answer ({kind || "unknown"})</label>
+      <label className="field-label">
+        {t("ann.fieldAnswer", { kind: kind || t("ann.kindUnknown") })}
+      </label>
       <textarea
         rows={5}
         style={{
@@ -969,14 +986,11 @@ const VqaEditorFields: React.FC<{
         onChange={(e) => onChange({ content: e.target.value })}
       />
       {parsed && kind === "bbox" && (
-        <p className="text-[11px] text-slate-400 mt-1">
-          Tip: bbox values are 0..1 image-relative (xyxy). Edit on the video
-          itself by deleting this and re-drawing.
-        </p>
+        <p className="text-[11px] text-slate-400 mt-1">{t("ann.tipBbox")}</p>
       )}
       {parsed && kind === "keypoint" && (
         <p className="text-[11px] text-slate-400 mt-1">
-          Tip: point values are 0..1 image-relative (xy).
+          {t("ann.tipKeypoint")}
         </p>
       )}
     </div>

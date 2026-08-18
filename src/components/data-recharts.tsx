@@ -18,6 +18,7 @@ import {
   Tooltip,
   ReferenceLine,
 } from "recharts";
+import { useT } from "@/context/locale-context";
 
 type ChartRow = Record<string, number | Record<string, number>>;
 
@@ -98,6 +99,7 @@ function mergeGroups(data: ChartRow[][]): ChartRow[] {
 
 export const DataRecharts = React.memo(
   ({ data, velocityData = [], onChartsReady }: DataGraphProps) => {
+    const t = useT();
     const [hoveredTime, setHoveredTime] = useState<number | null>(null);
     const [expanded, setExpanded] = useState(false);
     const [mode, setMode] = useState<EpisodeGraphMode>("position");
@@ -132,7 +134,7 @@ export const DataRecharts = React.memo(
           <div
             className="inline-flex rounded-md border border-white/10 bg-[var(--surface-1)]/60 p-0.5"
             role="tablist"
-            aria-label="Episode chart data"
+            aria-label={t("chart.aria")}
           >
             {(["position", "velocity"] as const).map((option) => {
               const active = mode === option;
@@ -144,11 +146,7 @@ export const DataRecharts = React.memo(
                   role="tab"
                   aria-selected={active}
                   disabled={disabled}
-                  title={
-                    disabled
-                      ? "No complete xyz or r1-r6 pose groups were found"
-                      : undefined
-                  }
+                  title={disabled ? t("chart.noPose") : undefined}
                   onClick={() => selectMode(option)}
                   className={`rounded px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                     active
@@ -156,7 +154,9 @@ export const DataRecharts = React.memo(
                       : "text-slate-500 hover:text-slate-200"
                   }`}
                 >
-                  {option === "position" ? "Position" : "Velocity"}
+                  {option === "position"
+                    ? t("chart.position")
+                    : t("chart.velocity")}
                 </button>
               );
             })}
@@ -199,7 +199,7 @@ export const DataRecharts = React.memo(
                   </>
                 )}
               </svg>
-              {expanded ? "Split charts" : "Combine all"}
+              {expanded ? t("chart.split") : t("chart.combine")}
             </button>
           )}
         </div>

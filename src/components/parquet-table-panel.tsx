@@ -29,15 +29,17 @@ import type {
   ParquetFileGroup,
   ParquetFileInfo,
 } from "@/types/parquet-browser.types";
+import { useT } from "@/context/locale-context";
+import type { MessageKey } from "@/i18n/messages";
 
 const PAGE_SIZES = [25, 50, 100, 250, 500];
 const DEFAULT_PAGE_SIZE = 50;
 
-const GROUP_LABELS: Record<ParquetFileGroup, string> = {
-  data: "Data",
-  episodes: "Episode metadata",
-  meta: "Meta",
-  other: "Other",
+const GROUP_LABEL_KEYS: Record<ParquetFileGroup, MessageKey> = {
+  data: "pq.groupData",
+  episodes: "pq.groupEpisodes",
+  meta: "pq.groupMeta",
+  other: "pq.groupOther",
 };
 
 const GROUP_ORDER: ParquetFileGroup[] = ["data", "episodes", "meta", "other"];
@@ -84,10 +86,12 @@ export default function ParquetTablePanel({
   encodedPath,
   episodeId,
 }: ParquetTablePanelProps) {
+  const t = useT();
   const [files, setFiles] = useState<ParquetFileEntry[]>([]);
   const [filesLoading, setFilesLoading] = useState(true);
   const [filesError, setFilesError] = useState<string | null>(null);
   const [locator, setLocator] = useState<EpisodeLocator | null>(null);
+  const [datasetPath, setDatasetPath] = useState<string>("");
   const [search, setSearch] = useState("");
 
   const [selected, setSelected] = useState<string | null>(null);
@@ -120,6 +124,7 @@ export default function ParquetTablePanel({
     fetchParquetFiles(encodedPath, episodeId, controller.signal)
       .then((res) => {
         setFiles(res.files);
+        setDatasetPath(res.datasetPath);
         setLocator(res.episodeLocator);
         if (res.episodeLocator) {
           pendingOffsetRef.current = res.episodeLocator.fromIndex;
@@ -282,7 +287,7 @@ export default function ParquetTablePanel({
   if (!encodedPath) {
     return (
       <div className="panel p-6 text-sm text-slate-400">
-        Raw parquet browsing is only available for local datasets.
+        {t("pq.localOnly")}
       </div>
     );
   }
@@ -295,28 +300,26 @@ export default function ParquetTablePanel({
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Filter files…"
+            placeholder={t("pq.filterFiles")}
             className="w-full rounded bg-black/30 px-2 py-1 text-xs text-slate-200 outline-none placeholder:text-slate-600 focus:ring-1 focus:ring-[var(--accent-ring)]"
           />
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {filesLoading && (
-            <p className="p-3 text-xs text-slate-500">Scanning dataset…</p>
+            <p className="p-3 text-xs text-slate-500">{t("pq.scanning")}</p>
           )}
           {filesError && (
             <p className="p-3 text-xs text-red-300">{filesError}</p>
           )}
           {!filesLoading && !filesError && files.length === 0 && (
-            <p className="p-3 text-xs text-slate-500">
-              No parquet files found in this dataset.
-            </p>
+            <p className="p-3 text-xs text-slate-500">{t("pq.noFiles")}</p>
           )}
 
           {groupedFiles.map(({ group, entries }) => (
             <div key={group} className="pb-2">
               <p className="sticky top-0 bg-[var(--surface-0)] px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-slate-500">
-                {GROUP_LABELS[group]}
+                {t(GROUP_LABEL_KEYS[group])}
               </p>
               {entries.map((file) => {
                 const active = file.relPath === selected;
@@ -324,7 +327,11 @@ export default function ParquetTablePanel({
                   <button
                     key={file.relPath}
                     onClick={() => setSelected(file.relPath)}
-                    title={file.relPath}
+                    title={
+                      datasetPath
+                        ? `${datasetPath}/${file.relPath}`
+                        : file.relPath
+                    }
                     className={`flex w-full items-baseline justify-between gap-2 px-3 py-1 text-left text-xs transition-colors ${
                       active
                         ? "bg-cyan-400/10 text-cyan-200"
@@ -350,9 +357,24 @@ export default function ParquetTablePanel({
         <header className="panel shrink-0 px-3 py-2">
           <p
             className="truncate font-mono text-sm text-slate-200"
-            title={selected ?? undefined}
+            title={
+              selected
+                ? datasetPath
+                  ? `${datasetPath}/${selected}`
+                  : selected
+                : undefined
+            }
           >
-            {selected ?? "No file selected"}
+            {selected ? (
+              <>
+                {datasetPath && (
+                  <span className="text-slate-500">{datasetPath}/</span>
+                )}
+                {selected}
+              </>
+            ) : (
+              t("pq.noFileSelected")
+            )}
           </p>
           <div className="tabular mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
             {info ? (
@@ -361,15 +383,15 @@ export default function ParquetTablePanel({
                   <span className="text-slate-300">
                     {info.numRows.toLocaleString()}
                   </span>{" "}
-                  rows
+                  {t("pq.rows")}
                 </span>
                 <span>
                   <span className="text-slate-300">{info.columns.length}</span>{" "}
-                  columns
+                  {t("pq.columns")}
                 </span>
                 <span>
                   <span className="text-slate-300">{info.numRowGroups}</span>{" "}
-                  row groups
+                  {t("pq.rowGroups")}
                 </span>
                 <span>{formatBytes(info.size)}</span>
                 {info.compression && <span>{info.compression}</span>}
@@ -380,17 +402,25 @@ export default function ParquetTablePanel({
                 )}
               </>
             ) : (
-              <span>{infoError ? "" : "Reading schema…"}</span>
+              <span>{infoError ? "" : t("pq.readingSchema")}</span>
             )}
             {locator && (
               <button
                 onClick={jumpToEpisode}
                 className="rounded border border-cyan-400/30 px-2 py-0.5 text-cyan-300 transition-colors hover:bg-cyan-400/10"
-                title={`${locator.relPath} rows ${locator.fromIndex}–${locator.toIndex}`}
+                title={t("pq.jumpTitle", {
+                  path: datasetPath
+                    ? `${datasetPath}/${locator.relPath}`
+                    : locator.relPath,
+                  from: locator.fromIndex,
+                  to: locator.toIndex,
+                })}
               >
-                Jump to episode {locator.episodeIndex} (rows{" "}
-                {locator.fromIndex.toLocaleString()}–
-                {locator.toIndex.toLocaleString()})
+                {t("pq.jumpToEpisode", {
+                  index: locator.episodeIndex,
+                  from: locator.fromIndex.toLocaleString(),
+                  to: locator.toIndex.toLocaleString(),
+                })}
               </button>
             )}
           </div>
@@ -407,7 +437,10 @@ export default function ParquetTablePanel({
               disabled={!info}
               className="rounded border border-white/10 px-2 py-1 text-slate-300 transition-colors hover:bg-white/5 disabled:opacity-40"
             >
-              Columns {orderedColumns.length}/{info?.columns.length ?? 0} ▾
+              {t("pq.columnsBtn", {
+                selected: orderedColumns.length,
+                total: info?.columns.length ?? 0,
+              })}
             </button>
 
             {pickerOpen && info && (
@@ -418,7 +451,7 @@ export default function ParquetTablePanel({
                   <input
                     value={columnSearch}
                     onChange={(event) => setColumnSearch(event.target.value)}
-                    placeholder="Filter columns…"
+                    placeholder={t("pq.filterColumns")}
                     className="min-w-0 flex-1 rounded bg-black/30 px-2 py-1 text-xs text-slate-200 outline-none placeholder:text-slate-600"
                   />
                   <button
@@ -427,13 +460,13 @@ export default function ParquetTablePanel({
                     }
                     className="rounded px-1.5 py-1 text-[11px] text-slate-400 hover:text-slate-100"
                   >
-                    All
+                    {t("pq.all")}
                   </button>
                   <button
                     onClick={() => setColumns([])}
                     className="rounded px-1.5 py-1 text-[11px] text-slate-400 hover:text-slate-100"
                   >
-                    None
+                    {t("pq.none")}
                   </button>
                   <button
                     onClick={() =>
@@ -445,7 +478,7 @@ export default function ParquetTablePanel({
                     }
                     className="rounded px-1.5 py-1 text-[11px] text-slate-400 hover:text-slate-100"
                   >
-                    Reset
+                    {t("pq.reset")}
                   </button>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto py-1">
@@ -480,7 +513,7 @@ export default function ParquetTablePanel({
           </div>
 
           <label className="flex items-center gap-1 text-slate-500">
-            Rows
+            {t("pq.rowsLabel")}
             <select
               value={limit}
               onChange={(event) => {
@@ -504,7 +537,7 @@ export default function ParquetTablePanel({
               disabled={offset <= 0}
               className="rounded border border-white/10 px-2 py-1 text-slate-300 transition-colors hover:bg-white/5 disabled:opacity-30"
             >
-              ‹ Prev
+              ‹ {t("common.prev")}
             </button>
             <span className="tabular px-1 text-slate-500">
               {currentPage} / {totalPages}
@@ -516,12 +549,12 @@ export default function ParquetTablePanel({
               disabled={offset >= maxOffset}
               className="rounded border border-white/10 px-2 py-1 text-slate-300 transition-colors hover:bg-white/5 disabled:opacity-30"
             >
-              Next ›
+              {t("common.next")} ›
             </button>
           </div>
 
           <label className="flex items-center gap-1 text-slate-500">
-            Go to row
+            {t("pq.goToRow")}
             <input
               type="number"
               min={0}
@@ -546,10 +579,12 @@ export default function ParquetTablePanel({
             disabled={rows.length === 0}
             className="rounded border border-white/10 px-2 py-1 text-slate-300 transition-colors hover:bg-white/5 disabled:opacity-30"
           >
-            Export page CSV
+            {t("pq.exportCsv")}
           </button>
 
-          {pageLoading && <span className="text-slate-500">Reading…</span>}
+          {pageLoading && (
+            <span className="text-slate-500">{t("pq.reading")}</span>
+          )}
         </div>
 
         {pageError && (
@@ -559,9 +594,7 @@ export default function ParquetTablePanel({
         <div className="panel min-h-0 flex-1 overflow-auto">
           {orderedColumns.length === 0 ? (
             <p className="p-4 text-xs text-slate-500">
-              {info
-                ? "No columns selected — pick some in the Columns menu."
-                : "Select a parquet file to inspect."}
+              {info ? t("pq.noColumns") : t("pq.selectFile")}
             </p>
           ) : (
             <table className="min-w-full border-separate border-spacing-0 text-xs">
@@ -613,7 +646,7 @@ export default function ParquetTablePanel({
                       colSpan={pageColumns.length + 1}
                       className="px-3 py-4 text-slate-500"
                     >
-                      No rows in this range.
+                      {t("pq.noRows")}
                     </td>
                   </tr>
                 )}
@@ -635,12 +668,13 @@ function ParquetCell({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const t = useT();
   const cell = useMemo(() => describeCell(value), [value]);
 
   return (
     <td
       onClick={cell.expandable ? onToggle : undefined}
-      title={cell.expandable ? "Click to expand" : undefined}
+      title={cell.expandable ? t("pq.clickExpand") : undefined}
       className={`tabular border-b border-white/5 px-2 py-1 align-top group-hover:bg-white/[0.02] ${
         CELL_TONE[cell.kind]
       } ${cell.expandable ? "cursor-pointer" : ""}`}

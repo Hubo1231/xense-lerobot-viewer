@@ -25,17 +25,19 @@ import {
 import { copyTextToClipboard } from "@/utils/clipboard";
 import { runDatasetDoctor } from "@/utils/doctorClient";
 import { assignEpisodesToBins } from "@/utils/episodeLengthHistogram";
+import { useLocale, useT } from "@/context/locale-context";
+import type { MessageKey } from "@/i18n/messages";
 
 const DEFAULT_MAX_EPISODES: number | null = null;
 const DEFAULT_CUSTOM_RANGE: DoctorEpisodeRange = { start: 10, end: 100 };
 const SAMPLE_OPTIONS = [
-  { value: "10", label: "First 10 episodes" },
-  { value: "25", label: "First 25 episodes" },
-  { value: "50", label: "First 50 episodes" },
-  { value: "100", label: "First 100 episodes" },
-  { value: "all", label: "Full dataset" },
-  { value: "custom", label: "Custom episode range" },
-] as const;
+  { value: "10", labelKey: "doctor.scope10" },
+  { value: "25", labelKey: "doctor.scope25" },
+  { value: "50", labelKey: "doctor.scope50" },
+  { value: "100", labelKey: "doctor.scope100" },
+  { value: "all", labelKey: "doctor.scopeAll" },
+  { value: "custom", labelKey: "doctor.scopeCustom" },
+] as const satisfies readonly { value: string; labelKey: MessageKey }[];
 
 type DoctorScopeOption = (typeof SAMPLE_OPTIONS)[number]["value"];
 
@@ -144,10 +146,11 @@ const INITIAL_PROGRESS: DoctorProgress = {
   total: 1,
   percent: 0,
   overall_percent: 0,
-  message: "Loading episode metadata and parquet data…",
+  message: "",
 };
 
 function ProgressBar({ progress }: { progress: DoctorProgress }) {
+  const t = useT();
   const displayedPercent =
     progress.phase === "loading"
       ? Math.max(4, progress.overall_percent)
@@ -155,7 +158,9 @@ function ProgressBar({ progress }: { progress: DoctorProgress }) {
   return (
     <div className="w-full max-w-xl" role="status" aria-live="polite">
       <div className="mb-2 flex items-center justify-between gap-4 text-xs">
-        <span className="truncate text-slate-400">{progress.message}</span>
+        <span className="truncate text-slate-400">
+          {progress.message || t("doctor.loadingProgress")}
+        </span>
         <span className="shrink-0 tabular text-cyan-300">
           {progress.overall_percent}%
         </span>
@@ -176,7 +181,10 @@ function ProgressBar({ progress }: { progress: DoctorProgress }) {
       </div>
       {progress.phase === "checks" && (
         <p className="mt-2 text-[11px] tabular text-slate-500">
-          {progress.completed}/{progress.total} checks completed
+          {t("doctor.checksCompleted", {
+            done: progress.completed,
+            total: progress.total,
+          })}
         </p>
       )}
     </div>
@@ -207,6 +215,7 @@ function SummaryCard({
   active: boolean;
   onClick: () => void;
 }) {
+  const t = useT();
   return (
     <button
       type="button"
@@ -231,7 +240,9 @@ function SummaryCard({
       >
         {count}
       </p>
-      <p className="mt-0.5 text-[11px] text-slate-500">checks</p>
+      <p className="mt-0.5 text-[11px] text-slate-500">
+        {t("doctor.checksWord")}
+      </p>
     </button>
   );
 }
@@ -249,6 +260,7 @@ function CheckCard({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const { t, tp } = useLocale();
   const { addMany } = useFlaggedEpisodes();
   const episodeIds = useMemo(() => {
     const ids = new Set<number>();
@@ -290,33 +302,35 @@ function CheckCard({
             </h3>
             {check.name === "Dimension-Level Jump Detection" && (
               <p className="mt-0.5 text-[10px] leading-4 text-slate-500 sm:mt-0">
-                Condition: ≥2 dimensions &gt;
-                {dimensionJumpThresholds.dimensionZThreshold}σ or 1 dimension
-                &gt;{dimensionJumpThresholds.extremeSingleDimensionZ}σ
+                {t("doctor.jumpCondition", {
+                  z1: dimensionJumpThresholds.dimensionZThreshold,
+                  z2: dimensionJumpThresholds.extremeSingleDimensionZ,
+                })}
               </p>
             )}
             {check.name === "TCP Speed Limit Detection" && (
               <p className="mt-0.5 text-[10px] leading-4 text-slate-500 sm:mt-0">
-                Condition: |vx|/|vy|/|vz| &gt;{" "}
-                {speedThresholds.linearMetersPerSecond} m/s or |ωx|/|ωy|/|ωz|
-                &gt; {speedThresholds.angularDegreesPerSecond} deg/s
+                {t("doctor.speedCondition", {
+                  lin: speedThresholds.linearMetersPerSecond,
+                  ang: speedThresholds.angularDegreesPerSecond,
+                })}
               </p>
             )}
           </div>
           <span className="ml-auto shrink-0 text-[11px] tabular text-slate-500">
             {issueCount > 0
-              ? `${issueCount} issue${issueCount === 1 ? "" : "s"}`
-              : "clean"}
+              ? tp("home.groupIssues", issueCount)
+              : t("doctor.clean")}
           </span>
         </button>
         {episodeIds.length > 0 && (
           <button
             type="button"
             onClick={() => addMany(episodeIds)}
-            title={`Flag episodes ${episodeIds.join(", ")}`}
+            title={t("doctor.flagEpisodes", { ids: episodeIds.join(", ") })}
             className="shrink-0 rounded-md border border-orange-400/25 bg-orange-400/10 px-2 py-1 text-[10px] font-medium text-orange-300 transition-colors hover:border-orange-400/50 hover:bg-orange-400/15"
           >
-            Flag {episodeIds.length}
+            {t("doctor.flagN", { count: episodeIds.length })}
           </button>
         )}
       </div>
@@ -324,7 +338,7 @@ function CheckCard({
       {expanded && (
         <div className="space-y-2 border-t border-white/5 px-4 py-3">
           {check.messages.length === 0 ? (
-            <p className="text-xs text-slate-500">No detail messages.</p>
+            <p className="text-xs text-slate-500">{t("doctor.noDetail")}</p>
           ) : (
             check.messages.map((message, index) => (
               <div
@@ -359,6 +373,7 @@ export default function DoctorPanel({
   episodeLengthStats,
   episodeLengthStatsLoading,
 }: DoctorPanelProps) {
+  const { t, tp } = useLocale();
   const { addMany } = useFlaggedEpisodes();
   const cached = encodedPath ? doctorRunCache.get(encodedPath) : undefined;
   const [scopeOption, setScopeOption] = useState<DoctorScopeOption>(
@@ -429,7 +444,7 @@ export default function DoctorPanel({
       refresh = false,
     ) => {
       if (!encodedPath) {
-        setError("Doctor is available for local datasets only.");
+        setError(t("doctor.localOnly"));
         return;
       }
       controllerRef.current?.abort();
@@ -481,7 +496,7 @@ export default function DoctorPanel({
         }
       }
     },
-    [encodedPath],
+    [encodedPath, t],
   );
 
   useEffect(() => {
@@ -754,17 +769,16 @@ export default function DoctorPanel({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2.5">
-            <h2 className="text-xl font-bold text-slate-100">Doctor</h2>
+            <h2 className="text-xl font-bold text-slate-100">
+              {t("viewer.tab.doctor")}
+            </h2>
             <span className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-500">
-              read-only
+              {t("doctor.readOnly")}
             </span>
             {report && <SeverityBadge severity={report.overall_severity} />}
           </div>
           <p className="mt-1 max-w-2xl text-sm text-slate-400">
-            Native TypeScript dataset quality diagnostics. Checks metadata,
-            timing, actions, videos, statistics, episode consistency, training
-            readiness, anomalies, dimension-level jumps, TCP speed limits, and
-            portability without a Python runtime.
+            {t("doctor.desc")}
           </p>
           <p
             className="mt-1 truncate text-xs text-slate-500"
@@ -778,7 +792,7 @@ export default function DoctorPanel({
           {scopeOption === "custom" && (
             <div className="flex items-center gap-1.5">
               <label className="sr-only" htmlFor="doctor-range-start">
-                Start episode index
+                {t("doctor.startEpisode")}
               </label>
               <input
                 id="doctor-range-start"
@@ -790,11 +804,11 @@ export default function DoctorPanel({
                 onChange={(event) => setCustomStart(event.target.value)}
                 aria-invalid={!customRangeValid}
                 className="w-20 rounded-md border border-white/10 bg-[var(--surface-1)] px-2 py-2 text-xs tabular text-slate-300 outline-none transition-colors focus:border-cyan-400/50 disabled:opacity-50"
-                placeholder="Start"
+                placeholder={t("doctor.phStart")}
               />
-              <span className="text-xs text-slate-500">to</span>
+              <span className="text-xs text-slate-500">{t("doctor.to")}</span>
               <label className="sr-only" htmlFor="doctor-range-end">
-                End episode index
+                {t("doctor.endEpisode")}
               </label>
               <input
                 id="doctor-range-end"
@@ -806,12 +820,12 @@ export default function DoctorPanel({
                 onChange={(event) => setCustomEnd(event.target.value)}
                 aria-invalid={!customRangeValid}
                 className="w-20 rounded-md border border-white/10 bg-[var(--surface-1)] px-2 py-2 text-xs tabular text-slate-300 outline-none transition-colors focus:border-cyan-400/50 disabled:opacity-50"
-                placeholder="End"
+                placeholder={t("doctor.phEnd")}
               />
             </div>
           )}
           <label className="sr-only" htmlFor="doctor-scope">
-            Diagnostic scope
+            {t("doctor.scopeLabel")}
           </label>
           <select
             id="doctor-scope"
@@ -824,7 +838,7 @@ export default function DoctorPanel({
           >
             {SAMPLE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {t(option.labelKey)}
               </option>
             ))}
           </select>
@@ -834,7 +848,7 @@ export default function DoctorPanel({
               onClick={() => downloadReport(report)}
               className="rounded-md border border-white/10 px-3 py-2 text-xs font-medium text-slate-400 transition-colors hover:border-white/20 hover:text-slate-200"
             >
-              Download JSON
+              {t("doctor.downloadJson")}
             </button>
           )}
           <button
@@ -860,7 +874,11 @@ export default function DoctorPanel({
             className="inline-flex min-w-28 items-center justify-center gap-2 rounded-md bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {running && <Spinner />}
-            {running ? "Diagnosing…" : result ? "Run again" : "Run Doctor"}
+            {running
+              ? t("doctor.diagnosing")
+              : result
+                ? t("doctor.runAgain")
+                : t("doctor.run")}
           </button>
         </div>
       </div>
@@ -869,17 +887,15 @@ export default function DoctorPanel({
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(22rem,auto)] md:items-center">
           <div className="min-w-0">
             <p className="text-xs font-medium text-slate-300">
-              Dimension-Level Jump Detection
+              {t("doctor.jumpTitle")}
             </p>
             <p className="mt-1 text-[11px] text-slate-500">
-              Triggers when at least 2 dimensions exceed the coordinated
-              threshold, or 1 dimension exceeds the single-dimension threshold;
-              reports triggered dimensions above 8σ.
+              {t("doctor.jumpDesc")}
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex min-w-0 flex-col gap-1 text-[11px] text-slate-400">
-              <span>Coordinated z</span>
+              <span>{t("doctor.coordZ")}</span>
               <input
                 type="number"
                 min="0.1"
@@ -893,7 +909,7 @@ export default function DoctorPanel({
               />
             </label>
             <label className="flex min-w-0 flex-col gap-1 text-[11px] text-slate-400">
-              <span>Single-dimension z</span>
+              <span>{t("doctor.singleZ")}</span>
               <input
                 type="number"
                 min="0.1"
@@ -909,8 +925,10 @@ export default function DoctorPanel({
               />
             </label>
             <p className="text-[11px] tabular text-cyan-300/80 sm:col-span-2">
-              ≥2 dims &gt;{dimensionZThreshold || "?"}σ or 1 dim &gt;
-              {extremeSingleDimensionZ || "?"}σ
+              {t("doctor.jumpFormula", {
+                z1: dimensionZThreshold || "?",
+                z2: extremeSingleDimensionZ || "?",
+              })}
             </p>
           </div>
         </div>
@@ -921,13 +939,13 @@ export default function DoctorPanel({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <p className="text-xs font-medium text-slate-300">
-                TCP Speed Limit Detection
+                {t("doctor.speedTitle")}
               </p>
               <button
                 type="button"
                 role="switch"
                 aria-checked={speedCheckEnabled}
-                aria-label="Enable TCP speed limit detection"
+                aria-label={t("doctor.speedAria")}
                 disabled={running}
                 onClick={() => setSpeedCheckEnabled((enabled) => !enabled)}
                 className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${speedCheckEnabled ? "border-cyan-300/60 bg-cyan-400/70" : "border-white/15 bg-white/10"}`}
@@ -937,23 +955,21 @@ export default function DoctorPanel({
                 />
               </button>
               <span className="text-[10px] text-slate-500">
-                {speedCheckEnabled ? "On" : "Off"}
+                {speedCheckEnabled ? t("doctor.on") : t("doctor.off")}
               </span>
             </div>
             <p className="mt-1 text-[11px] text-slate-500">
-              Checks each world-frame xyz direction independently. Translation
-              uses metres per second; rotation uses the SO(3) angular velocity
-              in degrees per second.
+              {t("doctor.speedDesc")}
             </p>
             <p className="mt-1 text-[10px] text-slate-600">
               {speedCheckEnabled
-                ? "Enabled for the next Doctor run."
-                : "Turn on to include this check in the next Doctor run."}
+                ? t("doctor.speedEnabled")
+                : t("doctor.speedDisabled")}
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex min-w-0 flex-col gap-1 text-[11px] text-slate-400">
-              <span>Linear xyz (m/s)</span>
+              <span>{t("doctor.linear")}</span>
               <input
                 type="number"
                 min="0.1"
@@ -969,7 +985,7 @@ export default function DoctorPanel({
               />
             </label>
             <label className="flex min-w-0 flex-col gap-1 text-[11px] text-slate-400">
-              <span>Angular xyz (deg/s)</span>
+              <span>{t("doctor.angular")}</span>
               <input
                 type="number"
                 min="1"
@@ -985,8 +1001,10 @@ export default function DoctorPanel({
               />
             </label>
             <p className="text-[11px] tabular text-cyan-300/80 sm:col-span-2">
-              |vx| / |vy| / |vz| ≤ {linearSpeedMetersPerSecond || "?"} m/s ·
-              |ωx| / |ωy| / |ωz| ≤ {angularSpeedDegreesPerSecond || "?"} deg/s
+              {t("doctor.speedFormula", {
+                lin: linearSpeedMetersPerSecond || "?",
+                ang: angularSpeedDegreesPerSecond || "?",
+              })}
             </p>
           </div>
         </div>
@@ -997,8 +1015,7 @@ export default function DoctorPanel({
           className="rounded-md border border-red-400/20 bg-red-400/5 px-3 py-2 text-xs text-red-200/80"
           role="alert"
         >
-          Enter non-negative episode indices with the end greater than or equal
-          to the start. Both endpoints are included.
+          {t("doctor.errRange")}
         </div>
       )}
 
@@ -1007,8 +1024,7 @@ export default function DoctorPanel({
           className="rounded-md border border-red-400/20 bg-red-400/5 px-3 py-2 text-xs text-red-200/80"
           role="alert"
         >
-          Enter dimension-jump z-score thresholds greater than 0 and no more
-          than {MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD}.
+          {t("doctor.errZ", { max: MAX_DOCTOR_DIMENSION_JUMP_Z_THRESHOLD })}
         </div>
       )}
 
@@ -1017,28 +1033,30 @@ export default function DoctorPanel({
           className="rounded-md border border-red-400/20 bg-red-400/5 px-3 py-2 text-xs text-red-200/80"
           role="alert"
         >
-          Enter speed thresholds greater than 0. Linear speed must be no more
-          than {MAX_DOCTOR_LINEAR_SPEED_METERS_PER_SECOND} m/s and angular speed
-          no more than {MAX_DOCTOR_ANGULAR_SPEED_DEGREES_PER_SECOND} deg/s.
+          {t("doctor.errSpeed", {
+            maxLinear: MAX_DOCTOR_LINEAR_SPEED_METERS_PER_SECOND,
+            maxAngular: MAX_DOCTOR_ANGULAR_SPEED_DEGREES_PER_SECOND,
+          })}
         </div>
       )}
 
       {scopeOption === "all" && !running && (
         <div className="rounded-md border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-xs text-amber-200/80">
-          Full-dataset checks load every episode parquet and can use substantial
-          time and memory on large datasets.
+          {t("doctor.fullWarning")}
         </div>
       )}
 
       <section className="panel space-y-4 p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="text-sm font-medium text-slate-200">
-            Episode Length Distribution
+            {t("doctor.distTitle")}
           </h3>
           <p className="text-[11px] text-slate-500">
-            Statistics · full dataset
+            {t("doctor.distSub")}
             {episodeLengthStats
-              ? ` · ${episodeLengthStats.episodeLengthHistogram.length} bins`
+              ? t("doctor.distBins", {
+                  count: episodeLengthStats.episodeLengthHistogram.length,
+                })
               : ""}
           </p>
         </div>
@@ -1049,7 +1067,7 @@ export default function DoctorPanel({
             role="status"
           >
             <Spinner />
-            Loading episode length distribution…
+            {t("doctor.distLoading")}
           </div>
         ) : episodeLengthStats &&
           episodeLengthStats.episodeLengthHistogram.length > 0 ? (
@@ -1060,7 +1078,7 @@ export default function DoctorPanel({
           />
         ) : (
           <p className="py-8 text-center text-xs text-slate-500">
-            Episode length distribution is unavailable for this dataset.
+            {t("doctor.distUnavailable")}
           </p>
         )}
       </section>
@@ -1080,10 +1098,10 @@ export default function DoctorPanel({
         <div className="panel flex min-h-52 items-center justify-center px-6 text-center">
           <div>
             <p className="text-sm font-medium text-slate-300">
-              Ready to diagnose
+              {t("doctor.ready")}
             </p>
             <p className="mt-2 text-xs text-slate-500">
-              Choose an episode range, then click Run Doctor.
+              {t("doctor.readyHint")}
             </p>
           </div>
         </div>
@@ -1095,7 +1113,7 @@ export default function DoctorPanel({
           role="alert"
         >
           <p className="text-sm font-medium text-red-300">
-            Doctor could not complete the diagnosis
+            {t("doctor.failed")}
           </p>
           <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-red-200/75">
             {error}
@@ -1110,7 +1128,7 @@ export default function DoctorPanel({
               <div className="grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-4">
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-slate-500">
-                    Episodes
+                    {t("common.episodes")}
                   </p>
                   <p className="mt-1 text-sm font-medium tabular text-slate-200">
                     {formatInteger(report.total_episodes)}
@@ -1118,7 +1136,7 @@ export default function DoctorPanel({
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-slate-500">
-                    Frames
+                    {t("common.frames")}
                   </p>
                   <p className="mt-1 text-sm font-medium tabular text-slate-200">
                     {formatInteger(report.total_frames)}
@@ -1134,7 +1152,7 @@ export default function DoctorPanel({
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-slate-500">
-                    Version
+                    {t("doctor.version")}
                   </p>
                   <p className="mt-1 text-sm font-medium text-slate-200">
                     {report.codebase_version ?? report.format_version ?? "—"}
@@ -1142,13 +1160,17 @@ export default function DoctorPanel({
                 </div>
               </div>
               <p className="mt-3 border-t border-white/5 pt-3 text-[11px] text-slate-500">
-                Loaded {result.execution.loaded_episode_count.toLocaleString()}{" "}
-                episode
-                {result.execution.loaded_episode_count === 1 ? "" : "s"} for
-                data-backed checks ·{" "}
-                {formatDuration(result.execution.duration_ms)} · TypeScript
-                engine v{report.version}
-                {result.execution.cache_hit ? " · cached" : ""}
+                {tp(
+                  "doctor.loadedLine",
+                  result.execution.loaded_episode_count,
+                  {
+                    count:
+                      result.execution.loaded_episode_count.toLocaleString(),
+                    duration: formatDuration(result.execution.duration_ms),
+                    version: report.version,
+                  },
+                )}
+                {result.execution.cache_hit ? t("doctor.cached") : ""}
               </p>
             </div>
             {(["PASS", "WARN", "FAIL"] as const).map((severity) => (
@@ -1184,7 +1206,7 @@ export default function DoctorPanel({
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search checks and messages…"
+                placeholder={t("doctor.searchPh")}
                 className="w-full rounded-md border border-white/10 bg-[var(--surface-1)]/60 py-2 pl-9 pr-3 text-xs text-slate-200 outline-none placeholder:text-slate-600 focus:border-cyan-400/50"
               />
             </div>
@@ -1194,7 +1216,7 @@ export default function DoctorPanel({
                 onClick={() => setSeverityFilter("ALL")}
                 className="text-xs text-slate-500 transition-colors hover:text-slate-300"
               >
-                Clear {severityFilter} filter
+                {t("doctor.clearFilter", { severity: severityFilter })}
               </button>
             )}
             {report && (
@@ -1203,18 +1225,22 @@ export default function DoctorPanel({
                   <button
                     type="button"
                     onClick={() => addMany(affectedEpisodeIds)}
-                    title={`Flag episodes ${affectedEpisodeIds.join(", ")}`}
+                    title={t("doctor.flagEpisodes", {
+                      ids: affectedEpisodeIds.join(", "),
+                    })}
                     className="rounded-md border border-orange-400/25 bg-orange-400/10 px-3 py-2 text-xs font-medium text-orange-300 transition-colors hover:border-orange-400/50 hover:bg-orange-400/15"
                   >
-                    Flag all affected ({affectedEpisodeIds.length})
+                    {t("doctor.flagAllAffected", {
+                      count: affectedEpisodeIds.length,
+                    })}
                   </button>
                 )}
                 {affectedEpisodeIds.length > 0 && (
                   <button
                     type="button"
                     onClick={() => void copyAffectedEpisodeIds()}
-                    title="Copy affected episode IDs"
-                    aria-label="Copy affected episode IDs"
+                    title={t("doctor.copyAffected")}
+                    aria-label={t("doctor.copyAffected")}
                     className="inline-flex items-center gap-1.5 rounded-md border border-cyan-400/25 bg-cyan-400/10 px-3 py-2 text-xs font-medium text-cyan-300 transition-colors hover:border-cyan-400/50 hover:bg-cyan-400/15"
                   >
                     {copiedAffectedIds ? (
@@ -1227,7 +1253,7 @@ export default function DoctorPanel({
                         >
                           <path d="m7.5 13.5-3-3L3 12l4.5 4.5L17 7l-1.5-1.5z" />
                         </svg>
-                        Copied IDs
+                        {t("stats.copiedIds")}
                       </>
                     ) : (
                       <>
@@ -1242,7 +1268,7 @@ export default function DoctorPanel({
                           <rect x="6.5" y="6.5" width="9" height="9" rx="1.5" />
                           <path d="M13.5 6.5V5A1.5 1.5 0 0 0 12 3.5H5A1.5 1.5 0 0 0 3.5 5v7A1.5 1.5 0 0 0 5 13.5h1.5" />
                         </svg>
-                        Copy IDs
+                        {t("stats.copyIds")}
                       </>
                     )}
                   </button>
@@ -1253,10 +1279,10 @@ export default function DoctorPanel({
                   onClick={() => void copyDoctorDetails()}
                   title={
                     episodeLengthStatsLoading
-                      ? "Waiting for the episode length distribution"
-                      : "Copy all Doctor checks and the episode length distribution"
+                      ? t("doctor.copyDetailsWait")
+                      : t("doctor.copyDetailsTitle")
                   }
-                  aria-label="Copy all Doctor checks and the episode length distribution"
+                  aria-label={t("doctor.copyDetailsTitle")}
                   className="inline-flex items-center gap-1.5 rounded-md border border-violet-400/25 bg-violet-400/10 px-3 py-2 text-xs font-medium text-violet-300 transition-colors hover:border-violet-400/50 hover:bg-violet-400/15 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {copiedDoctorDetails ? (
@@ -1269,7 +1295,7 @@ export default function DoctorPanel({
                       >
                         <path d="m7.5 13.5-3-3L3 12l4.5 4.5L17 7l-1.5-1.5z" />
                       </svg>
-                      Copied details
+                      {t("doctor.copiedDetails")}
                     </>
                   ) : (
                     <>
@@ -1285,8 +1311,8 @@ export default function DoctorPanel({
                         <path d="M13.5 6.5V5A1.5 1.5 0 0 0 12 3.5H5A1.5 1.5 0 0 0 3.5 5v7A1.5 1.5 0 0 0 5 13.5h1.5" />
                       </svg>
                       {episodeLengthStatsLoading
-                        ? "Preparing details…"
-                        : "Copy details"}
+                        ? t("doctor.preparingDetails")
+                        : t("doctor.copyDetails")}
                     </>
                   )}
                 </button>
@@ -1320,15 +1346,13 @@ export default function DoctorPanel({
             ))}
             {visibleChecks.length === 0 && (
               <div className="rounded-lg border border-white/10 p-8 text-center text-sm text-slate-500">
-                No checks match this filter.
+                {t("doctor.noChecksMatch")}
               </div>
             )}
           </div>
 
           <p className="text-[11px] leading-5 text-slate-600">
-            Sample limits apply to parquet-backed checks. Dataset metadata and
-            file-layout checks may still inspect the complete directory. Doctor
-            does not modify dataset files.
+            {t("doctor.footnote")}
           </p>
         </>
       )}

@@ -1,6 +1,9 @@
 "use client";
 
+import { useT } from "@/context/locale-context";
+
 export default function Loading() {
+  const t = useT();
   return (
     <div
       className="absolute inset-0 flex flex-col items-center justify-center bg-[var(--bg)]/80 backdrop-blur-sm z-10 text-slate-200"
@@ -31,9 +34,9 @@ export default function Loading() {
         />
       </svg>
       <h1 className="text-sm font-medium tracking-wide uppercase text-slate-300">
-        Loading
+        {t("loading.title")}
       </h1>
-      <p className="text-xs text-slate-500 mt-1">preparing data &amp; videos</p>
+      <p className="text-xs text-slate-500 mt-1">{t("loading.subtitle")}</p>
     </div>
   );
 }
