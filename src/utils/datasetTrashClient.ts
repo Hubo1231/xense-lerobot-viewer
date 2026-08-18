@@ -4,6 +4,7 @@
  */
 
 import type { TrashEntry } from "@/utils/datasetTrash";
+import { tStandalone } from "@/i18n/standalone";
 
 const TRASH_URL = "/api/local-datasets/trash";
 
@@ -32,7 +33,9 @@ export async function trashDataset(
 export async function fetchTrash(signal?: AbortSignal): Promise<TrashSummary> {
   const response = await fetch(TRASH_URL, { signal });
   if (!response.ok)
-    throw new Error(`Trash listing failed (${response.status})`);
+    throw new Error(
+      tStandalone("err.trashListFailed", { status: response.status }),
+    );
   return (await response.json()) as TrashSummary;
 }
 

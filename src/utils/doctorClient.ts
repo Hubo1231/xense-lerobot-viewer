@@ -7,6 +7,7 @@ import type {
   DoctorSpeedThresholds,
   DoctorStreamEvent,
 } from "@/types/doctor.types";
+import { tStandalone } from "@/i18n/standalone";
 
 export interface RunDoctorOptions {
   maxEpisodes: number | null;
@@ -26,7 +27,7 @@ function doctorError(data: unknown, status: number): Error {
       "hint" in data && typeof data.hint === "string" ? data.hint : null;
     if (error) return new Error(hint ? `${error}\n\n${hint}` : error);
   }
-  return new Error(`Doctor request failed (${status}).`);
+  return new Error(tStandalone("err.doctorRequest", { status }));
 }
 
 function parseStreamLine(line: string): DoctorStreamEvent | null {
@@ -34,7 +35,7 @@ function parseStreamLine(line: string): DoctorStreamEvent | null {
   try {
     return JSON.parse(line) as DoctorStreamEvent;
   } catch {
-    throw new Error("Doctor returned an invalid progress stream.");
+    throw new Error(tStandalone("err.doctorProgress"));
   }
 }
 
@@ -66,7 +67,7 @@ export async function runDatasetDoctor(
     throw doctorError(data, response.status);
   }
   if (!response.body) {
-    throw new Error("Doctor did not return a readable progress stream.");
+    throw new Error(tStandalone("err.doctorNoStream"));
   }
 
   const reader = response.body.getReader();
@@ -91,7 +92,6 @@ export async function runDatasetDoctor(
   }
   processEvent(parseStreamLine(buffer));
 
-  if (!result)
-    throw new Error("Doctor progress stream ended without a result.");
+  if (!result) throw new Error(tStandalone("err.doctorNoResult"));
   return result;
 }

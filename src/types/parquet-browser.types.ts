@@ -58,6 +58,12 @@ export interface EpisodeLocator {
 }
 
 export interface ParquetFilesResponse {
+  /**
+   * Absolute dataset directory the `relPath`s are relative to. Shown as the
+   * prefix in the browser header so a path on screen can be pasted into a
+   * terminal without the reader having to remember which dataset is open.
+   */
+  datasetPath: string;
   files: ParquetFileEntry[];
   episodeLocator: EpisodeLocator | null;
 }

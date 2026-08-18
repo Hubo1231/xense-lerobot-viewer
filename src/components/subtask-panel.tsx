@@ -38,6 +38,7 @@ import {
   fetchEpisodeSubtasks,
   saveEpisodeSubtasks,
 } from "@/utils/subtasksClient";
+import { useLocale, useT } from "@/context/locale-context";
 
 const COMMON_SKILLS = [
   "Pick",
@@ -83,6 +84,7 @@ export const SubtaskPanel: React.FC<Props> = ({
   task,
   frameTimestamps,
 }) => {
+  const { t, tp } = useLocale();
   const { currentTime, duration, seek, setIsPlaying } = useTime();
 
   const [ann, setAnn] = useState<EpisodeSubtaskAnnotation>(() =>
@@ -238,8 +240,12 @@ export const SubtaskPanel: React.FC<Props> = ({
     setSelectedId(activeSeg.segment_id);
     setStatus(
       atSuccess
-        ? `Cleared success frame for subtask #${activeSeg.segment_id}.`
-        : `Marked success @ frame ${currentFrame} for subtask #${activeSeg.segment_id} (${activeSeg.instruction}).`,
+        ? t("subtask.statusCleared", { id: activeSeg.segment_id })
+        : t("subtask.statusMarked", {
+            frame: currentFrame,
+            id: activeSeg.segment_id,
+            instruction: activeSeg.instruction,
+          }),
     );
   };
 
@@ -251,9 +257,17 @@ export const SubtaskPanel: React.FC<Props> = ({
       const { path } = await saveEpisodeSubtasks(encodedPath, ann, lastFrame);
       savedSnapshotRef.current = JSON.stringify(ann);
       setDirty(false);
-      setStatus(path ? `Saved to ${path}` : "Saved subtasks.");
+      setStatus(
+        path
+          ? t("subtask.statusSaved", { path })
+          : t("subtask.statusSavedPlain"),
+      );
     } catch (e) {
-      setStatus(`Save failed: ${e instanceof Error ? e.message : String(e)}`);
+      setStatus(
+        t("subtask.statusSaveFailed", {
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      );
     } finally {
       setSaving(false);
     }
@@ -262,18 +276,14 @@ export const SubtaskPanel: React.FC<Props> = ({
   const handleExport = async () => {
     if (!encodedPath) return;
     if (dirty) {
-      setStatus("Save the episode before exporting.");
+      setStatus(t("subtask.statusSaveFirst"));
       return;
     }
-    if (
-      !window.confirm(
-        "Export ALL saved subtasks to the dataset?\n\nCompiles every episode in meta/annotations.json into a per-frame `subtask_index` column (rewrites the data parquet files) and writes meta/subtasks.parquet. A .bak backup is kept. Requires Python + pyarrow.",
-      )
-    ) {
+    if (!window.confirm(t("subtask.exportConfirm"))) {
       return;
     }
     setExporting(true);
-    setStatus("Exporting… (compiling subtask_index in Python)");
+    setStatus(t("subtask.statusExporting"));
     const r = await exportSubtasksToDataset(encodedPath);
     setStatus(r.message);
     setExporting(false);
@@ -285,26 +295,26 @@ export const SubtaskPanel: React.FC<Props> = ({
     <div className="mb-6 panel p-4">
       <div className="flex items-center gap-3 mb-3">
         <p className="text-[10px] uppercase tracking-wide text-slate-500">
-          Subtasks
+          {t("subtask.title")}
         </p>
         {dirty && (
           <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-200">
-            unsaved
+            {t("subtask.unsaved")}
           </span>
         )}
         <span className="ml-auto tabular text-[10px] text-slate-500">
-          frame {currentFrame} / {lastFrame}
+          {t("subtask.frameOf", { current: currentFrame, last: lastFrame })}
         </span>
       </div>
 
       {/* High-level instruction */}
       <label className="block text-[10px] uppercase tracking-wide text-slate-500 mb-1">
-        High-level instruction
+        {t("subtask.highLevel")}
       </label>
       <input
         type="text"
         value={ann.high_level_instruction}
-        placeholder={task || "Overall task for this episode"}
+        placeholder={task || t("subtask.highLevelPlaceholder")}
         onChange={(e) =>
           setAnn((prev) => ({
             ...prev,
@@ -317,7 +327,7 @@ export const SubtaskPanel: React.FC<Props> = ({
       {/* Active subtask banner */}
       <div className="mt-3 rounded-md border border-cyan-400/20 bg-cyan-400/5 px-3 py-2">
         <p className="text-[10px] uppercase tracking-wide text-cyan-300/80">
-          Active subtask @ frame {currentFrame}
+          {t("subtask.activeAt", { frame: currentFrame })}
         </p>
         {activeSeg ? (
           <div className="mt-0.5 flex items-baseline gap-2">
@@ -338,20 +348,21 @@ export const SubtaskPanel: React.FC<Props> = ({
           </div>
         ) : (
           <p className="mt-0.5 text-sm text-slate-500 italic">
-            No subtask yet — add one below, then it covers from frame 0.
+            {t("subtask.none")}
           </p>
         )}
         {activeSeg && (
           <p className="mt-1 tabular text-[10px] text-slate-500">
-            success frame:{" "}
+            {t("subtask.successFrameShort")}{" "}
             {activeSeg.success_frame_index != null ? (
               <span className="text-emerald-300">
                 {activeSeg.success_frame_index}
               </span>
             ) : (
               <span className="text-slate-600">
-                unmarked — scrub to the success moment, then click “✓ Mark
-                success here”.
+                {t("subtask.unmarked", {
+                  button: t("subtask.markSuccess"),
+                })}
               </span>
             )}
           </p>
@@ -364,33 +375,33 @@ export const SubtaskPanel: React.FC<Props> = ({
         <div className="flex items-center gap-0.5">
           <button
             onClick={() => jumpToFrame(currentFrame - 1)}
-            title="Previous frame"
+            title={t("subtask.prevFrame")}
             className="rounded border border-white/10 px-1.5 py-1 text-[11px] text-slate-300 hover:text-cyan-200"
           >
             ◀
           </button>
           <span className="tabular bg-white/5 px-2 py-1 text-[11px] text-slate-400">
-            frame {currentFrame}
+            {t("subtask.frame", { frame: currentFrame })}
           </span>
           <button
             onClick={() => jumpToFrame(currentFrame + 1)}
-            title="Next frame"
+            title={t("subtask.nextFrame")}
             className="rounded border border-white/10 px-1.5 py-1 text-[11px] text-slate-300 hover:text-cyan-200"
           >
             ▶
           </button>
           <button
             onClick={() => jumpToFrame(lastFrame)}
-            title={`Jump to the last frame (${lastFrame})`}
+            title={t("subtask.jumpLastTitle", { frame: lastFrame })}
             className="rounded border border-white/10 px-1.5 py-1 text-[11px] text-slate-300 hover:text-cyan-200"
           >
-            ⤓ last
+            ⤓ {t("subtask.lastBtn")}
           </button>
         </div>
         <input
           list="subtask-skills"
           value={qaSkill}
-          placeholder="skill"
+          placeholder={t("subtask.skillPlaceholder")}
           onChange={(e) => setQaSkill(e.target.value)}
           className="w-24 rounded-md border border-white/10 bg-[var(--surface-1)] px-2 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-400/50 focus:outline-none"
         />
@@ -402,7 +413,7 @@ export const SubtaskPanel: React.FC<Props> = ({
         <input
           type="text"
           value={qaInstruction}
-          placeholder="subtask instruction — e.g. grasp the handle of the sponge"
+          placeholder={t("subtask.instructionPlaceholder")}
           onChange={(e) => setQaInstruction(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") handleAdd();
@@ -414,27 +425,27 @@ export const SubtaskPanel: React.FC<Props> = ({
           disabled={!qaInstruction.trim()}
           className="rounded-md border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-medium text-cyan-200 transition-colors hover:bg-cyan-500/20 disabled:opacity-40"
         >
-          + Set subtask from here
+          {t("subtask.addBtn")}
         </button>
         <button
           onClick={handleMarkSuccess}
           disabled={!activeSeg}
           title={
             activeSeg
-              ? "Set (or clear) the active subtask's success frame to the current frame"
-              : "Add a subtask first, then scrub into it to mark its success frame"
+              ? t("subtask.markSuccessTitle")
+              : t("subtask.markSuccessDisabledTitle")
           }
           className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition-colors hover:bg-emerald-500/20 disabled:opacity-40"
         >
           {activeSeg && activeSeg.success_frame_index === currentFrame
-            ? "✓ Clear success"
-            : "✓ Mark success here"}
+            ? t("subtask.clearSuccess")
+            : t("subtask.markSuccess")}
         </button>
       </div>
       <input
         type="text"
         value={qaParaphrases}
-        placeholder="paraphrases (one per line, optional)"
+        placeholder={t("subtask.paraphrasesPlaceholder")}
         onChange={(e) => setQaParaphrases(e.target.value)}
         className="mt-2 w-full rounded-md border border-white/10 bg-[var(--surface-1)] px-2.5 py-1.5 text-xs text-slate-300 placeholder:text-slate-600 focus:border-cyan-400/50 focus:outline-none"
       />
@@ -453,11 +464,11 @@ export const SubtaskPanel: React.FC<Props> = ({
       <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="rounded-md border border-white/5 bg-[var(--surface-0)]/50">
           <div className="border-b border-white/5 px-3 py-2 text-[10px] uppercase tracking-wide text-slate-500">
-            {segments.length} subtask{segments.length === 1 ? "" : "s"}
+            {tp("subtask.count", segments.length)}
           </div>
           {segments.length === 0 ? (
             <div className="px-3 py-4 text-xs text-slate-500">
-              No subtasks yet. Scrub to a frame and add one above.
+              {t("subtask.empty")}
             </div>
           ) : (
             <ul className="max-h-64 overflow-y-auto">
@@ -541,15 +552,15 @@ export const SubtaskPanel: React.FC<Props> = ({
           disabled={saving || !dirty}
           className="rounded-md border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-medium text-cyan-200 transition-colors hover:bg-cyan-500/20 disabled:opacity-40"
         >
-          {saving ? "Saving…" : "Save subtasks"}
+          {saving ? t("subtask.saving") : t("subtask.save")}
         </button>
         <button
           onClick={handleExport}
           disabled={exporting}
-          title="Compile to lerobot-native subtask_index + meta/subtasks.parquet (rewrites parquet; needs Python + pyarrow)"
+          title={t("subtask.exportTitle")}
           className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:border-cyan-400/40 hover:text-cyan-100 disabled:opacity-40"
         >
-          {exporting ? "Exporting…" : "Export to dataset → subtask_index"}
+          {exporting ? t("subtask.exporting") : t("subtask.export")}
         </button>
         {status && <span className="text-[11px] text-slate-400">{status}</span>}
       </div>
@@ -580,6 +591,7 @@ const SegmentStrip: React.FC<{
   onSeek: (frame: number) => void;
   onSelect: (id: number) => void;
 }> = ({ segments, lastFrame, currentFrame, activeIdx, onSeek, onSelect }) => {
+  const t = useT();
   const span = Math.max(1, lastFrame);
   const playheadLeft = `${Math.min(100, (currentFrame / span) * 100)}%`;
   return (
@@ -622,7 +634,9 @@ const SegmentStrip: React.FC<{
               key={`ok-${s.segment_id}`}
               className="absolute top-0 h-full w-px bg-emerald-300"
               style={{ left: `${(s.success_frame_index / span) * 100}%` }}
-              title={`success @ ${s.success_frame_index}`}
+              title={t("subtask.successTick", {
+                frame: s.success_frame_index,
+              })}
             />
           ) : null,
         )}
@@ -652,6 +666,7 @@ const SegmentInspector: React.FC<{
   onDelete: () => void;
   onJump: (frame: number) => void;
 }> = ({ segment, currentFrame, onChange, onSetSuccess, onDelete, onJump }) => {
+  const t = useT();
   const successValue = segment?.success_frame_index ?? null;
   const segId = segment?.segment_id;
   const [successDraft, setSuccessDraft] = useState("");
@@ -662,7 +677,7 @@ const SegmentInspector: React.FC<{
   if (!segment) {
     return (
       <div className="flex items-center justify-center rounded-md border border-white/5 bg-[var(--surface-0)]/50 px-3 py-4 text-xs text-slate-500">
-        Select a subtask to edit it.
+        {t("subtask.selectToEdit")}
       </div>
     );
   }
@@ -698,14 +713,14 @@ const SegmentInspector: React.FC<{
         </span>
         <button
           onClick={() => onJump(segment.start_frame_index)}
-          title="Jump to start"
+          title={t("subtask.jumpStart")}
           className="rounded border border-white/10 px-1.5 py-0.5 text-[11px] text-slate-300 hover:text-cyan-200"
         >
           ▶
         </button>
         <button
           onClick={onDelete}
-          title="Delete subtask"
+          title={t("subtask.delete")}
           className="ml-auto rounded border border-red-500/30 px-1.5 py-0.5 text-[11px] text-red-300 hover:bg-red-500/10"
         >
           ×
@@ -713,7 +728,7 @@ const SegmentInspector: React.FC<{
       </div>
 
       <label className="block text-[10px] uppercase tracking-wide text-slate-500">
-        Skill
+        {t("subtask.skill")}
       </label>
       <input
         list="subtask-skills"
@@ -723,7 +738,7 @@ const SegmentInspector: React.FC<{
       />
 
       <label className="block text-[10px] uppercase tracking-wide text-slate-500">
-        Instruction
+        {t("subtask.instruction")}
       </label>
       <textarea
         rows={2}
@@ -733,7 +748,7 @@ const SegmentInspector: React.FC<{
       />
 
       <label className="block text-[10px] uppercase tracking-wide text-slate-500">
-        Paraphrases (one per line)
+        {t("subtask.paraphrases")}
       </label>
       <textarea
         rows={2}
@@ -745,7 +760,7 @@ const SegmentInspector: React.FC<{
       />
 
       <label className="mt-2 block text-[10px] uppercase tracking-wide text-slate-500">
-        Success frame
+        {t("subtask.successFrameLabel")}
       </label>
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
         <input
@@ -769,30 +784,32 @@ const SegmentInspector: React.FC<{
         />
         <button
           onClick={() => onSetSuccess(currentFrame)}
-          title="Set to the current playhead frame"
+          title={t("subtask.setCurrentTitle")}
           className="rounded border border-emerald-500/30 px-1.5 py-1 text-[11px] text-emerald-200 hover:bg-emerald-500/10"
         >
-          = current ({currentFrame})
+          {t("subtask.setCurrent", { frame: currentFrame })}
         </button>
         <button
           onClick={() => onSetSuccess(segment.end_frame_index)}
-          title="Set to this subtask's last frame"
+          title={t("subtask.setEndTitle")}
           className="rounded border border-white/10 px-1.5 py-1 text-[11px] text-slate-300 hover:text-cyan-200"
         >
-          = end ({segment.end_frame_index})
+          {t("subtask.setEnd", { frame: segment.end_frame_index })}
         </button>
         {segment.success_frame_index != null && (
           <button
             onClick={() => onSetSuccess(null)}
             className="rounded border border-white/10 px-1.5 py-1 text-[11px] text-slate-400 hover:text-slate-200"
           >
-            clear
+            {t("subtask.clearBtn")}
           </button>
         )}
       </div>
       <p className="mt-1 text-[10px] text-slate-600">
-        Must be within [{segment.start_frame_index}, {segment.end_frame_index}];
-        values outside are cleared.
+        {t("subtask.successRange", {
+          start: segment.start_frame_index,
+          end: segment.end_frame_index,
+        })}
       </p>
     </div>
   );

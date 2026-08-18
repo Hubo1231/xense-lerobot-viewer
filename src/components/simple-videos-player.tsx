@@ -5,6 +5,7 @@ import { useTime } from "../context/time-context";
 import { FaExpand, FaCompress, FaTimes, FaEye } from "react-icons/fa";
 import type { VideoInfo } from "@/types";
 import { VideoOverlayCanvas } from "./video-overlay-canvas";
+import { useT } from "@/context/locale-context";
 
 const THRESHOLDS = {
   VIDEO_SYNC_TOLERANCE: 0.2,
@@ -24,6 +25,7 @@ export const SimpleVideosPlayer = ({
   videosInfo,
   onVideosReady,
 }: VideoPlayerProps) => {
+  const t = useT();
   const { currentTime, seek, externalSeekVersion, isPlaying, setIsPlaying } =
     useTime();
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
@@ -314,12 +316,13 @@ export const SimpleVideosPlayer = ({
             className="inline-flex items-center gap-2 h-8 rounded-md panel px-3 text-xs text-slate-300 hover:text-slate-100 hover:bg-white/5 transition-colors"
             onClick={() => setShowHiddenMenu(!showHiddenMenu)}
           >
-            <FaEye size={11} /> Show hidden · {hiddenVideos.length}
+            <FaEye size={11} />{" "}
+            {t("player.showHidden", { count: hiddenVideos.length })}
           </button>
           {showHiddenMenu && (
             <div className="absolute left-0 mt-1.5 w-max panel-raised bg-[var(--surface-1)] shadow-xl p-1.5 z-50">
               <div className="mb-1 px-2 text-[10px] uppercase tracking-wide text-slate-500">
-                Restore hidden videos
+                {t("player.restoreHidden")}
               </div>
               {hiddenVideos.map((filename) => (
                 <button
@@ -359,7 +362,9 @@ export const SimpleVideosPlayer = ({
                 <span className="truncate">{info.filename}</span>
                 <span className="flex gap-0.5 shrink-0">
                   <button
-                    title={isEnlarged ? "Minimize" : "Enlarge"}
+                    title={
+                      isEnlarged ? t("player.minimize") : t("player.enlarge")
+                    }
                     className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-white/5 transition-colors"
                     onClick={() =>
                       setEnlargedVideo(isEnlarged ? null : info.filename)
@@ -372,7 +377,7 @@ export const SimpleVideosPlayer = ({
                     )}
                   </button>
                   <button
-                    title="Hide Video"
+                    title={t("player.hide")}
                     className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-white/5 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
                     onClick={() => {
                       setHiddenVideos((prev) => [...prev, info.filename]);
@@ -404,7 +409,7 @@ export const SimpleVideosPlayer = ({
                   preload="metadata"
                 >
                   <source src={info.url} type="video/mp4" />
-                  Your browser does not support the video tag.
+                  {t("player.noVideoTag")}
                 </video>
                 {/* VQA bbox/keypoint overlay. Reads atoms + drawMode from
                     AnnotationsContext; pointer-events fall through when

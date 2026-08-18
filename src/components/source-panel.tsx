@@ -20,6 +20,7 @@ import {
   runSync,
   type SyncProgress,
 } from "@/utils/syncClient";
+import { useLocale, useT } from "@/context/locale-context";
 
 type SourcePanelProps = {
   segment: CorpusSegment;
@@ -63,38 +64,58 @@ function TodayStrip({
   since: string | null;
   spanDays: number | null;
 }) {
+  const t = useT();
+
   if (!delta || since === null) {
     return (
       <p className="text-xs text-[var(--text-faint)]">
-        No earlier snapshot yet — growth appears the next day this page is
-        opened.
+        {t("source.noSnapshot")}
       </p>
     );
   }
   if (isFlatDelta(delta)) {
     return (
       <p className="text-xs text-[var(--text-faint)]">
-        Unchanged since {since}
-        {spanDays !== null && spanDays > 1 ? ` (${spanDays} days ago)` : ""}.
+        {spanDays !== null && spanDays > 1
+          ? t("source.unchangedSpan", { since, days: spanDays })
+          : t("source.unchanged", { since })}
       </p>
     );
   }
 
   const items = [
-    { label: "Hours", value: formatDelta(delta.hours, " h", 1) },
-    { label: "Episodes", value: formatDelta(delta.episodes) },
-    { label: "Tasks", value: formatDelta(delta.tasks) },
+    {
+      key: "hours",
+      label: t("common.hours"),
+      value: formatDelta(delta.hours, " h", 1),
+    },
+    {
+      key: "episodes",
+      label: t("common.episodes"),
+      value: formatDelta(delta.episodes),
+    },
+    {
+      key: "tasks",
+      label: t("common.tasks"),
+      value: formatDelta(delta.tasks),
+    },
     // Dropped rather than shown as "n/a" when the baseline predates storage
     // tracking: one dead column on every source, for one day, teaches nothing.
     ...(delta.bytes === null
       ? []
-      : [{ label: "Storage", value: formatDeltaBytes(delta.bytes) }]),
+      : [
+          {
+            key: "storage",
+            label: t("common.storage"),
+            value: formatDeltaBytes(delta.bytes),
+          },
+        ]),
   ];
   return (
     <div>
       <div className="flex flex-wrap items-end gap-x-7 gap-y-2">
         {items.map((item) => (
-          <div key={item.label}>
+          <div key={item.key}>
             <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--text-faint)]">
               {item.label}
             </p>
@@ -105,8 +126,9 @@ function TodayStrip({
         ))}
       </div>
       <p className="mt-2 text-[11px] text-[var(--text-faint)]">
-        Since {since}
-        {spanDays !== null && spanDays > 1 ? ` · ${spanDays} days` : " · 1 day"}
+        {spanDays !== null && spanDays > 1
+          ? t("source.sinceDays", { since, days: spanDays })
+          : t("source.since", { since })}
       </p>
     </div>
   );
@@ -121,6 +143,7 @@ export default function SourcePanel({
   spanDays,
   onOpen,
 }: SourcePanelProps) {
+  const t = useT();
   const [sync, setSync] = useState<SyncState>({ kind: "idle" });
   const abortRef = useRef<AbortController | null>(null);
 
@@ -134,7 +157,7 @@ export default function SourcePanel({
         controller.signal,
       );
       if (listing.count === 0) {
-        setSync({ kind: "error", message: "No datasets found on the Hub." });
+        setSync({ kind: "error", message: t("source.noneFound") });
         return;
       }
       setSync({
@@ -146,7 +169,7 @@ export default function SourcePanel({
     } catch (err) {
       setSync({ kind: "error", message: (err as Error).message });
     }
-  }, [segment.prefix]);
+  }, [segment.prefix, t]);
 
   const startDownload = useCallback(
     async (force = false) => {
@@ -199,19 +222,33 @@ export default function SourcePanel({
 
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:flex sm:flex-wrap sm:items-end sm:gap-x-8">
           {[
-            { label: "Episodes", value: formatCompact(segment.episodes) },
-            { label: "Tasks", value: formatCompact(segment.tasks) },
             {
-              label: "Per episode",
+              key: "episodes",
+              label: t("common.episodes"),
+              value: formatCompact(segment.episodes),
+            },
+            {
+              key: "tasks",
+              label: t("common.tasks"),
+              value: formatCompact(segment.tasks),
+            },
+            {
+              key: "perEpisode",
+              label: t("source.perEpisode"),
               value: formatEpisodeLength(segment.avgEpisodeSeconds),
             },
             {
-              label: "Share",
+              key: "share",
+              label: t("source.share"),
               value: `${Math.round(segment.share * 100)}%`,
             },
-            { label: "Storage", value: formatBytes(segment.bytes) },
+            {
+              key: "storage",
+              label: t("common.storage"),
+              value: formatBytes(segment.bytes),
+            },
           ].map((item) => (
-            <div key={item.label}>
+            <div key={item.key}>
               <dt className="text-[10px] uppercase tracking-[0.14em] text-[var(--text-faint)]">
                 {item.label}
               </dt>
@@ -225,7 +262,7 @@ export default function SourcePanel({
 
       <div className="rounded-md border border-white/5 bg-[var(--surface-1)]/40 px-4 py-3.5">
         <p className="mb-2.5 text-[10px] font-medium uppercase tracking-[0.2em] text-[var(--text-faint)]">
-          Collected since last snapshot
+          {t("source.collectedSince")}
         </p>
         <TodayStrip delta={delta} since={since} spanDays={spanDays} />
       </div>
@@ -233,12 +270,13 @@ export default function SourcePanel({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
         <span className="inline-flex items-center gap-1.5 text-emerald-300/90">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          <span className="tabular">{counts.ok}</span> healthy
+          <span className="tabular">{counts.ok}</span> {t("common.healthy")}
         </span>
         {issues > 0 && (
           <span className="inline-flex items-center gap-1.5 text-amber-300/90">
             <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-            <span className="tabular">{issues}</span> need attention
+            <span className="tabular">{issues}</span>{" "}
+            {t("source.needAttention")}
           </span>
         )}
         <button
@@ -246,7 +284,7 @@ export default function SourcePanel({
           onClick={() => onOpen(segment.prefix)}
           className="ml-auto rounded-md border border-white/10 px-3 py-1.5 text-xs font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent)]/50 hover:text-[var(--accent)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
         >
-          Browse {segment.tasks} tasks
+          {t("source.browseTasks", { count: segment.tasks })}
         </button>
       </div>
 
@@ -281,6 +319,8 @@ function SyncBlock({
   onConfirm: (force?: boolean) => void;
   onCancel: () => void;
 }) {
+  const { t, tp, tRich, tpRich } = useLocale();
+
   if (state.kind === "idle" || state.kind === "error") {
     return (
       <div className="flex flex-wrap items-center gap-3">
@@ -289,10 +329,10 @@ function SyncBlock({
           onClick={onList}
           className="rounded-md bg-[var(--accent)] px-3.5 py-1.5 text-xs font-semibold text-slate-950 transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
         >
-          Sync from Hugging Face
+          {t("source.syncButton")}
         </button>
         <span className="text-[11px] text-[var(--text-faint)]">
-          Downloads {source} through hf-mirror. Shows what it would pull first.
+          {t("source.syncHint", { source })}
         </span>
         {state.kind === "error" && (
           <p className="w-full text-xs text-red-300">{state.message}</p>
@@ -304,7 +344,7 @@ function SyncBlock({
   if (state.kind === "listing") {
     return (
       <p className="text-xs text-[var(--text-muted)]">
-        Checking the Hub for {source}…
+        {t("source.checking", { source })}
       </p>
     );
   }
@@ -320,30 +360,37 @@ function SyncBlock({
       <div className="space-y-2.5">
         {pending === 0 ? (
           <p className="text-xs text-[var(--text-primary)]">
-            All <span className="tabular font-semibold">{total}</span> datasets
-            for {source} are already at the latest commit locally.
+            {tRich("source.allCurrent", {
+              total: <span className="tabular font-semibold">{total}</span>,
+              source,
+            })}
           </p>
         ) : (
           <p className="text-xs text-[var(--text-primary)]">
-            <span className="tabular font-semibold text-amber-300">
-              {pending}
-            </span>{" "}
-            of <span className="tabular font-semibold">{total}</span> datasets
-            for {source} need updating
+            {tRich("source.pending", {
+              pending: (
+                <span className="tabular font-semibold text-amber-300">
+                  {pending}
+                </span>
+              ),
+              total: <span className="tabular font-semibold">{total}</span>,
+              source,
+            })}
             {current > 0 && (
               <>
-                {" — the other "}
-                <span className="tabular">{current}</span> already match
+                {" "}
+                {tRich("source.othersMatch", {
+                  current: <span className="tabular">{current}</span>,
+                })}
               </>
             )}
-            .
           </p>
         )}
         <p className="text-[11px] text-[var(--text-faint)]">
-          {pending > 0 && (
-            <>Transfers the full contents of each, including video. </>
-          )}
-          Via <span className="font-mono">{state.endpoint}</span>.
+          {pending > 0 && <>{t("source.transferNote")} </>}
+          {tRich("source.via", {
+            endpoint: <span className="font-mono">{state.endpoint}</span>,
+          })}
         </p>
         <div className="flex flex-wrap gap-2 pt-0.5">
           {pending > 0 && (
@@ -352,7 +399,7 @@ function SyncBlock({
               onClick={() => onConfirm(false)}
               className="rounded-md bg-[var(--accent)] px-3.5 py-1.5 text-xs font-semibold text-slate-950 transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
             >
-              Download {pending} dataset{pending === 1 ? "" : "s"}
+              {tp("source.download", pending)}
             </button>
           )}
           {/* Escape hatch: the commit check reads the snapshot marker plus file
@@ -361,17 +408,17 @@ function SyncBlock({
           <button
             type="button"
             onClick={() => onConfirm(true)}
-            title="Ignore the local commit check and fetch every dataset again"
+            title={t("source.recheckTitle")}
             className="rounded-md border border-white/10 px-3.5 py-1.5 text-xs font-medium text-[var(--text-muted)] transition-colors hover:border-[var(--accent)]/50 hover:text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
           >
-            Re-check all {total}
+            {t("source.recheckAll", { total })}
           </button>
           <button
             type="button"
             onClick={onCancel}
             className="rounded-md border border-white/10 px-3.5 py-1.5 text-xs font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
         </div>
       </div>
@@ -385,7 +432,12 @@ function SyncBlock({
     // Files and bytes are what tell you a large repo is moving; the overall
     // percent barely shifts while one multi-gigabyte dataset transfers.
     const detail = [
-      p.filesTotal ? `${p.filesDone ?? 0}/${p.filesTotal} files` : null,
+      p.filesTotal
+        ? t("source.filesDetail", {
+            done: p.filesDone ?? 0,
+            total: p.filesTotal,
+          })
+        : null,
       p.bytes ? formatTransferred(p.bytes) : null,
     ]
       .filter(Boolean)
@@ -395,11 +447,13 @@ function SyncBlock({
       <div className="space-y-2">
         <div className="flex items-baseline justify-between gap-3 text-xs">
           <span className="truncate text-[var(--text-primary)]">
-            {p.phase === "listing" && "Preparing…"}
-            {p.phase === "preflight" && "Checking the endpoint…"}
-            {p.phase === "downloading" && `Downloading ${p.repo ?? ""}`}
-            {p.phase === "failed" && `Skipped ${p.repo ?? ""}`}
-            {p.phase === "complete" && "Finishing…"}
+            {p.phase === "listing" && t("source.phaseListing")}
+            {p.phase === "preflight" && t("source.phasePreflight")}
+            {p.phase === "downloading" &&
+              t("source.phaseDownloading", { repo: p.repo ?? "" })}
+            {p.phase === "failed" &&
+              t("source.phaseFailed", { repo: p.repo ?? "" })}
+            {p.phase === "complete" && t("source.phaseComplete")}
           </span>
           <span className="tabular shrink-0 text-[var(--text-muted)]">
             {p.index && p.total ? `${p.index}/${p.total} · ` : ""}
@@ -413,7 +467,7 @@ function SyncBlock({
           aria-valuenow={percent}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-label="Overall sync progress"
+          aria-label={t("source.progressAria")}
           className="h-1.5 w-full overflow-hidden rounded-full bg-white/5"
         >
           <div
@@ -430,7 +484,7 @@ function SyncBlock({
               aria-valuenow={repoPercent}
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-label="Current dataset progress"
+              aria-label={t("source.repoProgressAria")}
               className="h-1 w-full overflow-hidden rounded-full bg-white/5"
             >
               <div
@@ -447,7 +501,7 @@ function SyncBlock({
         )}
 
         <p className="text-[11px] text-[var(--text-faint)]">
-          Leaving this page does not stop the transfer.
+          {t("source.leavingNote")}
         </p>
       </div>
     );
@@ -457,30 +511,33 @@ function SyncBlock({
     <div className="space-y-1.5">
       <p className="text-xs text-emerald-300">
         {state.downloaded === 0 && state.failed === 0 ? (
-          <>Already up to date — nothing to transfer.</>
+          <>{t("source.upToDate")}</>
         ) : (
           <>
-            Downloaded <span className="tabular">{state.downloaded}</span>{" "}
-            dataset{state.downloaded === 1 ? "" : "s"}
+            {tpRich("source.downloaded", state.downloaded, {
+              count: <span className="tabular">{state.downloaded}</span>,
+            })}
             {state.skipped > 0 && (
               <span className="text-[var(--text-muted)]">
                 {" "}
-                · <span className="tabular">{state.skipped}</span> already
-                current
+                {tRich("source.alreadyCurrent", {
+                  count: <span className="tabular">{state.skipped}</span>,
+                })}
               </span>
             )}
             {state.failed > 0 && (
               <span className="text-amber-300">
                 {" "}
-                · <span className="tabular">{state.failed}</span> failed
+                {tRich("source.failedCount", {
+                  count: <span className="tabular">{state.failed}</span>,
+                })}
               </span>
             )}
-            .
           </>
         )}
       </p>
       <p className="text-[11px] text-[var(--text-faint)]">
-        Reload the page to pick up the new datasets.
+        {t("source.reloadNote")}
       </p>
     </div>
   );

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import React, { useMemo, useState } from "react";
 import { useFlaggedEpisodes } from "@/context/flagged-episodes-context";
+import { useT } from "@/context/locale-context";
 import { routePathFromRepoId } from "@/utils/datasetRoute";
 
 import type { DatasetDisplayInfo } from "@/app/[org]/[dataset]/[episode]/fetch-data";
@@ -32,6 +33,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowFlaggedOnlyChange,
   onEpisodeSelect,
 }) => {
+  const t = useT();
   const [mobileVisible, setMobileVisible] = useState(false);
   const { flagged, count, toggle } = useFlaggedEpisodes();
 
@@ -46,17 +48,17 @@ const Sidebar: React.FC<SidebarProps> = ({
         className={`shrink-0 overflow-y-auto bg-[var(--surface-0)] border-r border-white/5 p-4 break-words w-60 ${
           mobileVisible ? "block" : "hidden"
         } md:block`}
-        aria-label="Sidebar navigation"
+        aria-label={t("nav.aria")}
       >
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-slate-400 tabular">
           <dt className="uppercase tracking-wide text-[10px] text-slate-500">
-            Frames
+            {t("common.frames")}
           </dt>
           <dd className="text-slate-200">
             {datasetInfo.total_frames.toLocaleString()}
           </dd>
           <dt className="uppercase tracking-wide text-[10px] text-slate-500">
-            Episodes
+            {t("common.episodes")}
           </dt>
           <dd className="text-slate-200">
             {datasetInfo.total_episodes.toLocaleString()}
@@ -69,7 +71,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         <div className="mt-5 flex items-center justify-between">
           <p className="text-[10px] uppercase tracking-wide text-slate-500">
-            Episodes
+            {t("nav.episodeList")}
           </p>
           {count > 0 && (
             <button
@@ -80,7 +82,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   : "text-slate-500 hover:text-slate-300 border border-white/10"
               }`}
             >
-              Flagged · {count}
+              {t("nav.flagged", { count })}
             </button>
           )}
         </div>
@@ -101,7 +103,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       onClick={() => onEpisodeSelect(episode)}
                       className="flex-1 text-left"
                     >
-                      Episode {episode}
+                      {t("nav.episodeItem", { index: episode })}
                     </button>
                     <button
                       onClick={() => toggle(episode)}
@@ -110,7 +112,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                           ? "text-orange-400 hover:text-orange-300"
                           : "text-slate-600 hover:text-slate-400 opacity-0 group-hover:opacity-100"
                       }`}
-                      title={flagged.has(episode) ? "Unflag" : "Flag"}
+                      title={
+                        flagged.has(episode) ? t("nav.unflag") : t("nav.flag")
+                      }
                     >
                       ⚑
                     </button>
@@ -121,7 +125,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       href={routePathFromRepoId(datasetInfo.repoId, episode)}
                       className="flex-1 text-left"
                     >
-                      Episode {episode}
+                      {t("nav.episodeItem", { index: episode })}
                     </Link>
                     <button
                       onClick={() => toggle(episode)}
@@ -130,7 +134,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                           ? "text-orange-400 hover:text-orange-300"
                           : "text-slate-600 hover:text-slate-400 opacity-0 group-hover:opacity-100"
                       }`}
-                      title={flagged.has(episode) ? "Unflag" : "Flag"}
+                      title={
+                        flagged.has(episode) ? t("nav.unflag") : t("nav.flag")
+                      }
                     >
                       ⚑
                     </button>
@@ -150,7 +156,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               }`}
               disabled={currentPage === 1}
             >
-              ‹ Prev
+              ‹ {t("common.prev")}
             </button>
             <span className="tabular text-slate-500">
               {currentPage} / {totalPages}
@@ -164,7 +170,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               }`}
               disabled={currentPage === totalPages}
             >
-              Next ›
+              {t("common.next")} ›
             </button>
           </div>
         )}
@@ -173,7 +179,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       <button
         className="mx-1 flex items-center opacity-50 hover:opacity-100 focus:outline-none focus:ring-0 md:hidden"
         onClick={() => setMobileVisible((prev) => !prev)}
-        title="Toggle sidebar"
+        title={t("nav.toggle")}
       >
         <div className="h-10 w-1 rounded-full bg-white/20" />
       </button>

@@ -12,6 +12,7 @@ import {
   tapeWidths,
 } from "@/utils/corpusStats";
 import { formatBytes } from "@/utils/byteSize";
+import { useT } from "@/context/locale-context";
 
 type OverallCounts = { ok: number; empty: number; incomplete: number };
 
@@ -39,6 +40,7 @@ export default function CorpusTape({
   overall,
   onSelect,
 }: CorpusTapeProps) {
+  const t = useT();
   const stats = useMemo(() => computeCorpusStats(groups), [groups]);
   const widths = useMemo(() => tapeWidths(stats.segments), [stats.segments]);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -59,13 +61,13 @@ export default function CorpusTape({
   return (
     // Panel chrome (border, padding, spacing) belongs to the dashboard tab
     // container this renders inside; keep this component to its content.
-    <div aria-label="Corpus summary">
+    <div aria-label={t("tape.aria")}>
       {/* Headline duration + secondary totals. The figure is the only large
           type on the page; everything beside it stays at caption scale. */}
       <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-5">
         <div>
           <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-[var(--text-faint)]">
-            Recorded
+            {t("tape.recorded")}
           </p>
           <p className="mt-1.5 flex items-baseline gap-1.5">
             <span className="tabular text-[clamp(2.6rem,7vw,3.6rem)] font-semibold leading-[0.85] tracking-[-0.035em] text-[var(--text-primary)]">
@@ -81,13 +83,33 @@ export default function CorpusTape({
             own row; a single flex row once there's width for it. */}
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:flex sm:flex-wrap sm:items-end sm:gap-x-8">
           {[
-            { label: "Episodes", value: formatCompact(stats.totalEpisodes) },
-            { label: "Frames", value: formatCompact(stats.totalFrames) },
-            { label: "Tasks", value: formatCompact(stats.totalTasks) },
-            { label: "Sources", value: String(stats.segments.length) },
-            { label: "Storage", value: formatBytes(stats.totalBytes) },
+            {
+              key: "episodes",
+              label: t("common.episodes"),
+              value: formatCompact(stats.totalEpisodes),
+            },
+            {
+              key: "frames",
+              label: t("common.frames"),
+              value: formatCompact(stats.totalFrames),
+            },
+            {
+              key: "tasks",
+              label: t("common.tasks"),
+              value: formatCompact(stats.totalTasks),
+            },
+            {
+              key: "sources",
+              label: t("tape.sources"),
+              value: String(stats.segments.length),
+            },
+            {
+              key: "storage",
+              label: t("common.storage"),
+              value: formatBytes(stats.totalBytes),
+            },
           ].map((item) => (
-            <div key={item.label}>
+            <div key={item.key}>
               <dt className="text-[10px] uppercase tracking-[0.14em] text-[var(--text-faint)]">
                 {item.label}
               </dt>
@@ -114,8 +136,18 @@ export default function CorpusTape({
               onMouseLeave={() => setHovered(null)}
               onFocus={() => setHovered(segment.prefix)}
               onBlur={() => setHovered(null)}
-              title={`${segment.prefix} — ${formatHoursValue(segment.hours)} h of ${headline.value}${headline.unit}`}
-              aria-label={`${segment.prefix}: ${formatHoursValue(segment.hours)} hours, ${segment.episodes} episodes, ${segment.tasks} tasks, ${formatBytes(segment.bytes)} on disk`}
+              title={t("tape.bandTitle", {
+                prefix: segment.prefix,
+                hours: formatHoursValue(segment.hours),
+                total: `${headline.value}${headline.unit}`,
+              })}
+              aria-label={t("tape.bandAria", {
+                prefix: segment.prefix,
+                hours: formatHoursValue(segment.hours),
+                episodes: segment.episodes,
+                tasks: segment.tasks,
+                bytes: formatBytes(segment.bytes),
+              })}
               className="group/band relative h-full overflow-hidden rounded-[3px] transition-[width,opacity] duration-700 ease-out first:rounded-l-md last:rounded-r-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-0)] motion-reduce:transition-none"
               style={{
                 width: revealed ? `${widths[i]}%` : "0%",
@@ -159,10 +191,14 @@ export default function CorpusTape({
                 {segment.prefix}
               </span>
               <span className="tabular text-[var(--text-muted)]">
-                {formatCompact(segment.episodes)} ep
+                {t("tape.epSuffix", {
+                  value: formatCompact(segment.episodes),
+                })}
               </span>
               <span className="tabular text-[var(--text-faint)]">
-                {formatEpisodeLength(segment.avgEpisodeSeconds)}/ep
+                {t("tape.perEp", {
+                  value: formatEpisodeLength(segment.avgEpisodeSeconds),
+                })}
               </span>
               <span className="tabular text-[var(--text-faint)]">
                 {formatBytes(segment.bytes)}
@@ -176,18 +212,19 @@ export default function CorpusTape({
       <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-white/5 pt-3.5 text-xs">
         <span className="inline-flex items-center gap-1.5 text-emerald-300/90">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          <span className="tabular">{overall.ok}</span> healthy
+          <span className="tabular">{overall.ok}</span> {t("common.healthy")}
         </span>
         {overall.incomplete > 0 && (
           <span className="inline-flex items-center gap-1.5 text-red-300/90">
             <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-            <span className="tabular">{overall.incomplete}</span> incomplete
+            <span className="tabular">{overall.incomplete}</span>{" "}
+            {t("common.incomplete")}
           </span>
         )}
         {overall.empty > 0 && (
           <span className="inline-flex items-center gap-1.5 text-amber-300/90">
             <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-            <span className="tabular">{overall.empty}</span> empty
+            <span className="tabular">{overall.empty}</span> {t("common.empty")}
           </span>
         )}
         <span
@@ -195,8 +232,12 @@ export default function CorpusTape({
           className="ml-auto text-[var(--text-faint)] tabular"
         >
           {active
-            ? `${active.prefix} · ${active.tasks} tasks · ${Math.round(active.share * 100)}% of recorded time`
-            : "Select a band to open that source"}
+            ? t("tape.activeSummary", {
+                prefix: active.prefix,
+                tasks: active.tasks,
+                percent: Math.round(active.share * 100),
+              })
+            : t("tape.hint")}
         </span>
       </div>
     </div>

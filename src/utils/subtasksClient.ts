@@ -8,6 +8,7 @@
 
 import type { EpisodeSubtaskAnnotation } from "@/types/subtask.types";
 import { normalizeAnnotation } from "@/types/subtask.types";
+import { tStandalone } from "@/i18n/standalone";
 
 function subtasksBase(encodedPath: string): string {
   return `/api/local-datasets/${encodedPath}/subtasks`;
@@ -83,7 +84,7 @@ export async function exportSubtasksToDataset(
     }
     return {
       ok: true,
-      message: data.message || "Exported subtasks to dataset.",
+      message: data.message || tStandalone("subtask.exportedDefault"),
       path: data.path ?? null,
     };
   } catch (e) {

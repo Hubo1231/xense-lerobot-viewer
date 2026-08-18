@@ -20,6 +20,7 @@ import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
 import type { EpisodeData } from "@/app/[org]/[dataset]/[episode]/fetch-data";
 import { loadEpisodeFlatChartData } from "@/app/[org]/[dataset]/[episode]/fetch-data";
 import UrdfPlaybackBar from "@/components/urdf-playback-bar";
+import { useT } from "@/context/locale-context";
 import { CHART_CONFIG } from "@/utils/constants";
 import { getDatasetVersionAndInfo } from "@/utils/versionUtils";
 import type { DatasetMetadata } from "@/utils/parquetUtils";
@@ -730,6 +731,7 @@ export default function URDFViewer({
   episodeChangerRef?: React.RefObject<((ep: number) => void) | undefined>;
   playToggleRef?: React.RefObject<(() => void) | undefined>;
 }) {
+  const t = useT();
   const { datasetInfo } = data;
   const fps = datasetInfo.fps || 30;
   const robotConfig = useMemo(
@@ -954,7 +956,7 @@ export default function URDFViewer({
   if (data.flatChartData.length === 0) {
     return (
       <div className="text-slate-400 p-8 text-center">
-        No trajectory data available.
+        {t("urdf.noTrajectory")}
       </div>
     );
   }
@@ -967,8 +969,8 @@ export default function URDFViewer({
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--bg)]/80">
             <span className="text-white text-lg animate-pulse">
               {urdfLoading
-                ? "Loading 3D model…"
-                : `Loading episode ${selectedEpisode}…`}
+                ? t("urdf.loadingModel")
+                : t("urdf.loadingEpisode", { index: selectedEpisode })}
             </span>
           </div>
         )}
@@ -1085,17 +1087,21 @@ export default function URDFViewer({
           >
             ▶
           </span>
-          Joint Mapping
+          {t("urdf.jointMapping")}
           <span className="text-slate-600">
-            ({Object.keys(mapping).filter((k) => mapping[k]).length}/
-            {displayJointNames.length} mapped)
+            {t("urdf.mapped", {
+              mapped: Object.keys(mapping).filter((k) => mapping[k]).length,
+              total: displayJointNames.length,
+            })}
           </span>
         </button>
 
         {showMapping && (
           <div className="flex gap-4 items-start">
             <div className="space-y-1 shrink-0">
-              <label className="text-xs text-slate-400">Data source</label>
+              <label className="text-xs text-slate-400">
+                {t("urdf.dataSource")}
+              </label>
               <div className="flex gap-1 flex-wrap">
                 {groupNames.map((name) => (
                   <button
@@ -1117,12 +1123,16 @@ export default function URDFViewer({
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-[var(--surface-1)]">
                   <tr className="text-slate-500">
-                    <th className="text-left font-normal px-1">URDF Joint</th>
+                    <th className="text-left font-normal px-1">
+                      {t("urdf.thJoint")}
+                    </th>
                     <th className="text-left font-normal px-1">→</th>
                     <th className="text-left font-normal px-1">
-                      Dataset Column
+                      {t("urdf.thColumn")}
                     </th>
-                    <th className="text-right font-normal px-1">Value</th>
+                    <th className="text-right font-normal px-1">
+                      {t("urdf.thValue")}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1143,7 +1153,7 @@ export default function URDFViewer({
                           }
                           className="bg-[var(--surface-0)] text-slate-200 text-xs rounded px-1 py-0.5 border border-white/10 w-full max-w-[200px]"
                         >
-                          <option value="">-- unmapped --</option>
+                          <option value="">{t("urdf.unmapped")}</option>
                           {selectedColumns.map((col) => {
                             const label = col.split(SERIES_DELIM).pop() ?? col;
                             return (

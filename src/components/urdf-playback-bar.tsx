@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useT } from "@/context/locale-context";
 
 interface UrdfPlaybackBarProps {
   frame: number;
@@ -25,6 +26,7 @@ export default function UrdfPlaybackBar({
   onFrameChange,
   disabled = false,
 }: UrdfPlaybackBarProps) {
+  const t = useT();
   const currentTime = totalFrames > 0 ? (frame / fps).toFixed(2) : "0.00";
   const totalTime = (totalFrames / fps).toFixed(2);
 
@@ -60,9 +62,9 @@ export default function UrdfPlaybackBar({
             ? "bg-cyan-400/15 text-cyan-300 border border-cyan-400/40"
             : "bg-white/5 text-slate-400 border border-white/10"
         }`}
-        title={trailEnabled ? "Hide trail" : "Show trail"}
+        title={trailEnabled ? t("urdf.hideTrail") : t("urdf.showTrail")}
       >
-        Trail
+        {t("urdf.trail")}
       </button>
 
       {/* Scrubber */}
@@ -88,10 +90,10 @@ export default function UrdfPlaybackBar({
           <span className="px-1.5 py-0.5 rounded border border-white/10 bg-[var(--surface-1)] text-slate-400 text-xs">
             Space
           </span>{" "}
-          pause/unpause
+          {t("player.hintSpace")}
         </p>
         <p>
-          <span className="font-mono">↑/↓</span> prev/next episode
+          <span className="font-mono">↑/↓</span> {t("player.hintArrows")}
         </p>
       </div>
     </div>

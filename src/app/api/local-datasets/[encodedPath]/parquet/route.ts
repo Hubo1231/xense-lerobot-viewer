@@ -104,7 +104,11 @@ export async function GET(
       ? await locateEpisodeRows(root, episodeIndex).catch(() => null)
       : null;
 
-  const payload: ParquetFilesResponse = { files, episodeLocator };
+  const payload: ParquetFilesResponse = {
+    datasetPath: root,
+    files,
+    episodeLocator,
+  };
   return Response.json(payload, {
     headers: { "cache-control": "no-store" },
   });

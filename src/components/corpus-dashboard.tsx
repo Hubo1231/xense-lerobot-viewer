@@ -6,6 +6,7 @@ import { computeCorpusStats } from "@/utils/corpusStats";
 import type { DailyDelta } from "@/utils/corpusHistory";
 import CorpusTape from "@/components/corpus-tape";
 import SourcePanel from "@/components/source-panel";
+import { useT } from "@/context/locale-context";
 
 type OverallCounts = { ok: number; empty: number; incomplete: number };
 
@@ -33,6 +34,7 @@ export default function CorpusDashboard({
   delta,
   onSelect,
 }: CorpusDashboardProps) {
+  const t = useT();
   const stats = useMemo(() => computeCorpusStats(groups), [groups]);
   const [tab, setTab] = useState<string>(ALL);
 
@@ -52,18 +54,18 @@ export default function CorpusDashboard({
     : -1;
 
   const tabs = [
-    { id: ALL, label: "All sources" },
+    { id: ALL, label: t("dash.allSources") },
     ...stats.segments.map((s) => ({ id: s.prefix, label: s.prefix })),
   ];
 
   return (
     <section
-      aria-label="Corpus dashboard"
+      aria-label={t("dash.aria")}
       className="mb-8 rounded-lg border border-white/5 bg-[var(--surface-0)]/60"
     >
       <div
         role="tablist"
-        aria-label="Data source"
+        aria-label={t("dash.tablistAria")}
         className="flex flex-wrap gap-x-1 gap-y-0.5 border-b border-white/5 px-3 pt-2"
       >
         {tabs.map((entry) => {

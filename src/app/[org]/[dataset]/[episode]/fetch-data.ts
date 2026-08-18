@@ -27,6 +27,7 @@ import {
 } from "@/utils/episodeLengthHistogram";
 import { buildPoseVelocityChartGroups } from "@/utils/poseVelocity";
 import type { VideoInfo, AdjacentEpisodeVideos } from "@/types";
+import { tStandalone } from "@/i18n/standalone";
 
 const SERIES_NAME_DELIMITER = CHART_CONFIG.SERIES_NAME_DELIMITER;
 const CHARTABLE_NUMERIC_DTYPES = new Set([
@@ -1432,7 +1433,7 @@ async function loadEpisodeMetadataV3Simple(
       }
     }
   }
-  throw new Error(`Episode ${episodeId} not found in metadata`);
+  throw new Error(tStandalone("err.episodeNotFound", { id: episodeId }));
 }
 
 // Simple parser for episode row - focuses on key fields for episodes

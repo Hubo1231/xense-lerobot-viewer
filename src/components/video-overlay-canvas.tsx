@@ -24,6 +24,7 @@ import {
   type PendingPointDraw,
 } from "../context/annotations-context";
 import { useTime } from "../context/time-context";
+import { useT } from "../context/locale-context";
 import {
   classifyVqa,
   parseVqaAnswer,
@@ -723,6 +724,7 @@ const QuickLabelPopup: React.FC<{
   onSubmit,
   onCancel,
 }) => {
+  const t = useT();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -765,15 +767,15 @@ const QuickLabelPopup: React.FC<{
           }
           style={{ marginLeft: "auto" }}
         >
-          <option value="detect">where is …?</option>
-          <option value="point">point to …</option>
+          <option value="detect">{t("ann.qWhere")}</option>
+          <option value="point">{t("ann.qPoint")}</option>
         </select>
       </div>
       <input
         ref={inputRef}
         type="text"
         placeholder={
-          kind === "bbox" ? "label (e.g. carrot)" : "label (e.g. handle)"
+          kind === "bbox" ? t("ann.phBboxLabel") : t("ann.phPointLabel")
         }
         value={label}
         onChange={(e) => onLabelChange(e.target.value)}
@@ -784,14 +786,14 @@ const QuickLabelPopup: React.FC<{
       />
       <div className="quick-popup-actions">
         <button onClick={onCancel} className="popup-btn">
-          cancel
+          {t("ann.cancel")}
         </button>
         <button
           onClick={onSubmit}
           disabled={!label.trim()}
           className="popup-btn primary"
         >
-          add ↵
+          {t("ann.add")}
         </button>
       </div>
     </div>

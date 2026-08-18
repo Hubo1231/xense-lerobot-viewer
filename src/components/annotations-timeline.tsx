@@ -35,6 +35,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTime } from "../context/time-context";
 import { useAnnotations } from "../context/annotations-context";
+import { useLocale } from "../context/locale-context";
 import {
   classifyVqa,
   isSpeechAtom,
@@ -51,8 +52,8 @@ const DRAG_THRESHOLD_PX = 4;
 const TRACK_GROUPS = [
   {
     column: "persistent",
-    title: "Persistent",
-    sub: "language_persistent · broadcast across every frame",
+    titleKey: "ann.colPersistent",
+    subKey: "ann.colPersistentSub",
     tracks: [
       // task_aug applies to the whole episode (it's a rephrasing of the task,
       // stored at t0 but persistent across every frame), so it reads as a
@@ -77,8 +78,8 @@ const TRACK_GROUPS = [
   },
   {
     column: "events",
-    title: "Events",
-    sub: "language_events · fire on a single frame",
+    titleKey: "ann.colEvents",
+    subKey: "ann.colEventsSub",
     tracks: [
       {
         key: "interjection",
@@ -125,6 +126,7 @@ interface PendingCreate {
 }
 
 export const AnnotationsTimeline: React.FC<Props> = ({ duration }) => {
+  const { t, tp } = useLocale();
   const { atoms, addAtom, updateAtom, snap, selectAtom } = useAnnotations();
   const { currentTime, seek, setIsPlaying } = useTime();
   const trackBandRef = useRef<HTMLDivElement | null>(null);
@@ -470,7 +472,7 @@ export const AnnotationsTimeline: React.FC<Props> = ({ duration }) => {
   return (
     <div className="tl">
       <div className="tl-head">
-        <span>Annotations timeline</span>
+        <span>{t("ann.tlTitle")}</span>
         <span className="ts-display">
           {currentTime.toFixed(2)}s / {duration.toFixed(2)}s
         </span>
@@ -513,8 +515,8 @@ export const AnnotationsTimeline: React.FC<Props> = ({ duration }) => {
             {TRACK_GROUPS.map((group) => (
               <div className="tl-section" key={group.column}>
                 <div className={`tl-section-head ${group.column}`}>
-                  <span className="tl-section-title">{group.title}</span>
-                  <span className="tl-section-sub">{group.sub}</span>
+                  <span className="tl-section-title">{t(group.titleKey)}</span>
+                  <span className="tl-section-sub">{t(group.subKey)}</span>
                 </div>
                 {group.tracks.map((tk) => (
                   <div className="tl-row" key={tk.key}>
@@ -617,7 +619,7 @@ export const AnnotationsTimeline: React.FC<Props> = ({ duration }) => {
                               onMouseEnter={(e) =>
                                 showTip(
                                   e,
-                                  `task aug · ${count} phrasing${count > 1 ? "s" : ""}`,
+                                  tp("ann.tlTaskAugTip", count),
                                   count > 1
                                     ? augs.map((s) => `• ${s.label}`).join("\n")
                                     : primary.label,
@@ -737,7 +739,7 @@ export const AnnotationsTimeline: React.FC<Props> = ({ duration }) => {
               className="tl-playhead-handle"
               style={{ left: playheadLeft, top: -6 }}
               onPointerDown={onPlayheadDown}
-              title="Drag to scrub"
+              title={t("ann.tlDragScrub")}
             />
           </div>
         );
@@ -770,7 +772,7 @@ export const AnnotationsTimeline: React.FC<Props> = ({ duration }) => {
           </div>
           <input
             type="text"
-            placeholder="label (e.g. grasp the sponge)"
+            placeholder={t("ann.tlCreatePh")}
             autoFocus
             value={createLabel}
             onChange={(e) => setCreateLabel(e.target.value)}
@@ -792,7 +794,7 @@ export const AnnotationsTimeline: React.FC<Props> = ({ duration }) => {
                 cursor: "pointer",
               }}
             >
-              cancel
+              {t("ann.cancel")}
             </button>
             <button
               onClick={commitPendingCreate}
@@ -808,7 +810,7 @@ export const AnnotationsTimeline: React.FC<Props> = ({ duration }) => {
                 opacity: createLabel.trim() ? 1 : 0.4,
               }}
             >
-              add ↵
+              {t("ann.add")}
             </button>
           </div>
         </div>

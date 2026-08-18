@@ -14,6 +14,7 @@ import {
   assignEpisodesToBins,
   type HistogramBinning,
 } from "@/utils/episodeLengthHistogram";
+import { useLocale } from "@/context/locale-context";
 
 interface StatsPanelProps {
   datasetInfo: DatasetDisplayInfo;
@@ -39,6 +40,7 @@ export function EpisodeLengthHistogram({
   episodes: EpisodeLengthInfo[];
   binning: HistogramBinning;
 }) {
+  const { t, tp } = useLocale();
   const [activeBinIndex, setActiveBinIndex] = useState(() =>
     Math.max(
       0,
@@ -90,7 +92,7 @@ export function EpisodeLengthHistogram({
           width={svgWidth}
           height={topPad + chartHeight + labelHeight}
           className="block"
-          aria-label="Episode length distribution histogram"
+          aria-label={t("stats.histogramAria")}
         >
           {data.map((bin, i) => {
             const barH = Math.max(1, (bin.count / maxCount) * chartHeight);
@@ -106,7 +108,9 @@ export function EpisodeLengthHistogram({
                 role="button"
                 tabIndex={0}
                 aria-pressed={isActive}
-                aria-label={`${bin.binLabel}: ${bin.count} episode${bin.count !== 1 ? "s" : ""}`}
+                aria-label={tp("stats.binLabelCount", bin.count, {
+                  label: bin.binLabel,
+                })}
                 className="cursor-pointer outline-none"
                 onMouseEnter={() => setActiveBinIndex(i)}
                 onFocus={() => setActiveBinIndex(i)}
@@ -118,7 +122,17 @@ export function EpisodeLengthHistogram({
                   }
                 }}
               >
-                <title>{`${bin.binLabel}: ${bin.count} episode${bin.count !== 1 ? "s" : ""}${bin.count > 0 ? `\nEpisode indices: ${titleIndices}${remainingIndices > 0 ? `, … (+${remainingIndices} more)` : ""}` : ""}`}</title>
+                <title>
+                  {tp("stats.binLabelCount", bin.count, {
+                    label: bin.binLabel,
+                  })}
+                  {bin.count > 0 &&
+                    `\n${t("stats.binIndices", { indices: titleIndices })}${
+                      remainingIndices > 0
+                        ? t("stats.binMore", { count: remainingIndices })
+                        : ""
+                    }`}
+                </title>
                 <rect
                   x={x}
                   y={y}
@@ -171,14 +185,18 @@ export function EpisodeLengthHistogram({
           </p>
           <div className="flex items-center gap-2">
             <p className="text-xs tabular-nums text-slate-400">
-              {activeBin.count} episode{activeBin.count !== 1 ? "s" : ""}
+              {tp("stats.episodeCount", activeBin.count)}
             </p>
             {activeEpisodeIndices.length > 0 && (
               <button
                 type="button"
                 onClick={() => void copyActiveEpisodeIds()}
-                title={`Copy episode IDs: ${activeEpisodeIndices.join(", ")}`}
-                aria-label={`Copy ${activeBin.binLabel} episode IDs`}
+                title={t("stats.copyIdsTitle", {
+                  ids: activeEpisodeIndices.join(", "),
+                })}
+                aria-label={t("stats.copyIdsAria", {
+                  label: activeBin.binLabel,
+                })}
                 className="inline-flex items-center gap-1 rounded border border-cyan-400/25 bg-cyan-400/10 px-2 py-1 text-[11px] font-medium text-cyan-300 transition-colors hover:border-cyan-400/50 hover:bg-cyan-400/15"
               >
                 {copiedBinIndex === activeBinIndex ? (
@@ -191,7 +209,7 @@ export function EpisodeLengthHistogram({
                     >
                       <path d="m7.5 13.5-3-3L3 12l4.5 4.5L17 7l-1.5-1.5z" />
                     </svg>
-                    Copied IDs
+                    {t("stats.copiedIds")}
                   </>
                 ) : (
                   <>
@@ -206,7 +224,7 @@ export function EpisodeLengthHistogram({
                       <rect x="6.5" y="6.5" width="9" height="9" rx="1.5" />
                       <path d="M13.5 6.5V5A1.5 1.5 0 0 0 12 3.5H5A1.5 1.5 0 0 0 3.5 5v7A1.5 1.5 0 0 0 5 13.5h1.5" />
                     </svg>
-                    Copy IDs
+                    {t("stats.copyIds")}
                   </>
                 )}
               </button>
@@ -214,17 +232,17 @@ export function EpisodeLengthHistogram({
           </div>
         </div>
         <p className="mt-2 text-[11px] uppercase tracking-wide text-slate-500">
-          Episode indices
+          {t("stats.episodeIndices")}
         </p>
         <p className="mt-1 max-h-24 overflow-y-auto break-words font-mono text-xs leading-5 text-slate-300 select-all">
           {activeEpisodeIndices.length > 0
-            ? activeEpisodeIndices.map((index) => `ep ${index}`).join(", ")
-            : "None"}
+            ? activeEpisodeIndices
+                .map((index) => t("common.epShort", { index }))
+                .join(", ")
+            : t("stats.none")}
         </p>
       </div>
-      <p className="text-[11px] text-slate-500">
-        Hover, click, or focus a bar to inspect the episodes in that range.
-      </p>
+      <p className="text-[11px] text-slate-500">{t("stats.hint")}</p>
     </div>
   );
 }
@@ -243,6 +261,7 @@ function StatsPanel({
   episodeLengthStats,
   loading,
 }: StatsPanelProps) {
+  const { t, tp } = useLocale();
   const els = episodeLengthStats;
   const datasetDisplayName = getDisplayNameForRepoId(datasetInfo.repoId);
 
@@ -250,7 +269,7 @@ function StatsPanel({
     <div className="max-w-4xl mx-auto py-6 space-y-8">
       <div>
         <h2 className="text-xl text-slate-100">
-          <span className="font-bold">Dataset Statistics:</span>{" "}
+          <span className="font-bold">{t("stats.title")}</span>{" "}
           <span className="font-normal text-slate-400">
             {datasetDisplayName}
           </span>
@@ -259,23 +278,29 @@ function StatsPanel({
 
       {/* Overview cards */}
       <div className="grid grid-cols-3 gap-4">
-        <Card label="Robot Type" value={datasetInfo.robot_type ?? "unknown"} />
-        <Card label="Dataset Version" value={datasetInfo.codebase_version} />
-        <Card label="Tasks" value={datasetInfo.total_tasks} />
+        <Card
+          label={t("stats.robotType")}
+          value={datasetInfo.robot_type ?? t("stats.unknown")}
+        />
+        <Card
+          label={t("stats.datasetVersion")}
+          value={datasetInfo.codebase_version}
+        />
+        <Card label={t("common.tasks")} value={datasetInfo.total_tasks} />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card
-          label="Total Frames"
+          label={t("stats.totalFrames")}
           value={datasetInfo.total_frames.toLocaleString()}
         />
         <Card
-          label="Total Episodes"
+          label={t("stats.totalEpisodes")}
           value={datasetInfo.total_episodes.toLocaleString()}
         />
         <Card label="FPS" value={datasetInfo.fps} />
         <Card
-          label="Total Recording Time"
+          label={t("stats.totalTime")}
           value={formatTotalTime(datasetInfo.total_frames, datasetInfo.fps)}
         />
       </div>
@@ -284,7 +309,7 @@ function StatsPanel({
       {datasetInfo.cameras.length > 0 && (
         <div className="bg-[var(--surface-1)]/60 rounded-lg p-5 border border-white/10">
           <h3 className="text-sm font-semibold text-slate-200 mb-3">
-            Camera Resolutions
+            {t("stats.cameraResolutions")}
           </h3>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {datasetInfo.cameras.map((cam: CameraInfo) => (
@@ -325,7 +350,7 @@ function StatsPanel({
               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
             />
           </svg>
-          Computing episode statistics…
+          {t("stats.computing")}
         </div>
       )}
 
@@ -334,30 +359,35 @@ function StatsPanel({
         <>
           <div className="bg-[var(--surface-1)]/60 rounded-lg p-5 border border-white/10">
             <h3 className="text-sm font-semibold text-slate-200 mb-4">
-              Episode Lengths
+              {t("stats.episodeLengths")}
             </h3>
             <div className="grid grid-cols-3 md:grid-cols-5 gap-4 mb-4">
               <Card
-                label="Shortest"
+                label={t("stats.shortest")}
                 value={`${els.shortestEpisodes[0]?.lengthSeconds ?? "–"}s`}
               />
               <Card
-                label="Longest"
+                label={t("stats.longest")}
                 value={`${els.longestEpisodes[els.longestEpisodes.length - 1]?.lengthSeconds ?? "–"}s`}
               />
-              <Card label="Mean" value={`${els.meanEpisodeLength}s`} />
-              <Card label="Median" value={`${els.medianEpisodeLength}s`} />
-              <Card label="Std Dev" value={`${els.stdEpisodeLength}s`} />
+              <Card
+                label={t("stats.mean")}
+                value={`${els.meanEpisodeLength}s`}
+              />
+              <Card
+                label={t("stats.median")}
+                value={`${els.medianEpisodeLength}s`}
+              />
+              <Card label={t("stats.std")} value={`${els.stdEpisodeLength}s`} />
             </div>
           </div>
 
           {els.episodeLengthHistogram.length > 0 && (
             <div className="bg-[var(--surface-1)]/60 rounded-lg p-5 border border-white/10">
               <h3 className="text-sm font-semibold text-slate-200 mb-4">
-                Episode Length Distribution
+                {t("stats.distribution")}
                 <span className="text-xs text-slate-500 ml-2 font-normal">
-                  {els.episodeLengthHistogram.length} bin
-                  {els.episodeLengthHistogram.length !== 1 ? "s" : ""}
+                  {tp("stats.bins", els.episodeLengthHistogram.length)}
                 </span>
               </h3>
               <EpisodeLengthHistogram

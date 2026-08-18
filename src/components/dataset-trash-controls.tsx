@@ -7,6 +7,7 @@ import {
   fetchTrash,
   trashDataset,
 } from "@/utils/datasetTrashClient";
+import { useLocale } from "@/context/locale-context";
 
 /**
  * Delete confirmation and the trash strip that goes with it.
@@ -32,6 +33,7 @@ export function DeleteDatasetDialog({
   onClose,
   onDeleted,
 }: DeleteDialogProps) {
+  const { t, tRich, tpRich } = useLocale();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,12 +64,14 @@ export function DeleteDatasetDialog({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Delete dataset"
+        aria-label={t("trash.dialogTitle")}
         className="panel-raised w-full max-w-lg overflow-hidden rounded-lg border border-red-500/30"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="border-b border-white/10 bg-[var(--surface-1)]/60 px-5 py-3">
-          <h2 className="text-sm font-semibold text-red-200">Delete dataset</h2>
+          <h2 className="text-sm font-semibold text-red-200">
+            {t("trash.dialogTitle")}
+          </h2>
           <p
             className="mt-0.5 truncate font-mono text-xs text-slate-400"
             title={relativePath}
@@ -78,24 +82,24 @@ export function DeleteDatasetDialog({
 
         <div className="space-y-3 px-5 py-4 text-sm text-slate-300">
           <p>
-            Moves the whole directory
-            {episodes > 0 && (
-              <>
-                {" "}
-                — <span className="tabular">{episodes}</span> episode
-                {episodes === 1 ? "" : "s"}, including video
-              </>
-            )}{" "}
-            into{" "}
-            <span className="font-mono text-xs text-slate-200">
-              .xense-viewer/trash/
-            </span>
-            .
+            {episodes > 0
+              ? tpRich("trash.moveBodyEpisodes", episodes, {
+                  count: <span className="tabular">{episodes}</span>,
+                  path: (
+                    <span className="font-mono text-xs text-slate-200">
+                      .xense-viewer/trash/
+                    </span>
+                  ),
+                })
+              : tRich("trash.moveBody", {
+                  path: (
+                    <span className="font-mono text-xs text-slate-200">
+                      .xense-viewer/trash/
+                    </span>
+                  ),
+                })}
           </p>
-          <p className="text-xs text-slate-400">
-            Reversible: move the directory back out of the trash to restore it.
-            The disk space is only freed once you empty the trash.
-          </p>
+          <p className="text-xs text-slate-400">{t("trash.reversible")}</p>
           {error && (
             <p className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
               {error}
@@ -110,7 +114,7 @@ export function DeleteDatasetDialog({
             disabled={busy}
             className="rounded-md border border-white/10 px-3.5 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:text-slate-100 disabled:opacity-50"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -118,7 +122,7 @@ export function DeleteDatasetDialog({
             disabled={busy}
             className="rounded-md bg-red-500/90 px-3.5 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {busy ? "Moving…" : "Move to trash"}
+            {busy ? t("trash.moving") : t("trash.moveToTrash")}
           </button>
         </footer>
       </div>
@@ -131,6 +135,7 @@ export function DeleteDatasetDialog({
  * nothing when the trash is empty, which is the normal state.
  */
 export function TrashStrip({ refreshKey }: { refreshKey: number }) {
+  const { t, tpRich } = useLocale();
   const [summary, setSummary] = useState<{
     count: number;
     bytes: number;
@@ -173,23 +178,27 @@ export function TrashStrip({ refreshKey }: { refreshKey: number }) {
   return (
     <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-white/10 bg-[var(--surface-1)]/40 px-3 py-2 text-xs text-slate-400">
       <span>
-        Trash: <span className="tabular text-slate-200">{summary.count}</span>{" "}
-        dataset{summary.count === 1 ? "" : "s"} ·{" "}
-        <span className="tabular text-slate-200">
-          {formatBytes(summary.bytes)}
-        </span>{" "}
-        still on disk
+        {tpRich("trash.strip", summary.count, {
+          count: (
+            <span className="tabular text-slate-200">{summary.count}</span>
+          ),
+          bytes: (
+            <span className="tabular text-slate-200">
+              {formatBytes(summary.bytes)}
+            </span>
+          ),
+        })}
       </span>
       {confirming ? (
         <span className="flex items-center gap-2">
-          <span className="text-red-300">Delete permanently?</span>
+          <span className="text-red-300">{t("trash.confirmPrompt")}</span>
           <button
             type="button"
             onClick={purge}
             disabled={busy}
             className="rounded border border-red-500/50 bg-red-500/15 px-2 py-0.5 text-red-200 transition-colors hover:bg-red-500/25 disabled:opacity-50"
           >
-            {busy ? "Deleting…" : "Yes, empty it"}
+            {busy ? t("trash.deleting") : t("trash.yesEmpty")}
           </button>
           <button
             type="button"
@@ -197,7 +206,7 @@ export function TrashStrip({ refreshKey }: { refreshKey: number }) {
             disabled={busy}
             className="rounded border border-white/10 px-2 py-0.5 transition-colors hover:text-slate-200 disabled:opacity-50"
           >
-            Keep
+            {t("trash.keep")}
           </button>
         </span>
       ) : (
@@ -206,7 +215,7 @@ export function TrashStrip({ refreshKey }: { refreshKey: number }) {
           onClick={() => setConfirming(true)}
           className="rounded border border-white/10 px-2 py-0.5 transition-colors hover:border-red-400/50 hover:text-red-200"
         >
-          Empty trash
+          {t("trash.empty")}
         </button>
       )}
       {error && <span className="text-red-300">{error}</span>}
